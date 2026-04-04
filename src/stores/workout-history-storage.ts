@@ -36,12 +36,10 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()(
     (set) => ({
       history: [],
       _hasHydrated: false,
-      addWorkout: (workout) => set((state) => ({
-        history: [
-          { ...workout, id: Math.random().toString(36).substring(2, 9) },
-          ...state.history
-        ].slice(0, 100)
-      })),
+      addWorkout: (workout) =>
+        set((state) => ({
+          history: [{ ...workout, id: Math.random().toString(36).substring(2, 9) }, ...state.history].slice(0, 100),
+        })),
       clearHistory: () => set({ history: [] }),
     }),
     {
@@ -50,6 +48,6 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()(
       onRehydrateStorage: () => (state) => {
         if (state) state._hasHydrated = true;
       },
-    }
-  )
+    },
+  ),
 );

@@ -16,7 +16,7 @@ export type MuscleGroupSlot = {
   alternatives: ExerciseVariant[]; // 2-3 alternative exercises
   targetSets: number;
   targetReps: number;
-  targetWeight?: number; 
+  targetWeight?: number;
   isSuperset?: boolean;
 };
 

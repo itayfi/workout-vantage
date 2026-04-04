@@ -14,16 +14,10 @@ import './index.css';
 import { ThemeProvider } from '@/components/theme-provider';
 
 // Create the route tree
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  plansRoute,
-  planEditRoute,
-  sessionRoute,
-  historyRoute,
-]);
+const routeTree = rootRoute.addChildren([indexRoute, plansRoute, planEditRoute, sessionRoute, historyRoute]);
 
 // Create the router instance
-const router = createRouter({ 
+const router = createRouter({
   routeTree,
   basepath: '/workout-vantage/',
 });

@@ -15,7 +15,7 @@ function Plans() {
   const { plans } = useWorkoutPlans();
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-5 duration-500">
+    <div className="flex animate-in flex-col gap-6 duration-500 slide-in-from-right-5 fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight">Workout Plans</h1>
@@ -29,7 +29,7 @@ function Plans() {
       </div>
 
       {plans.length === 0 ? (
-        <Card className="border-dashed border-2 bg-transparent">
+        <Card className="border-2 border-dashed bg-transparent">
           <CardContent className="flex flex-col items-center justify-center p-12 text-center">
             <div className="mb-4 rounded-full bg-primary/10 p-4">
               <Dumbbell className="h-8 w-8 text-primary" />
@@ -49,8 +49,13 @@ function Plans() {
       ) : (
         <div className="grid gap-4">
           {plans.map((plan) => (
-            <Link key={plan.id} to="/plans/$planId" params={{ planId: plan.id }} className="block transition-transform active:scale-[0.98]">
-              <Card className="hover:bg-accent/50 transition-colors">
+            <Link
+              key={plan.id}
+              to="/plans/$planId"
+              params={{ planId: plan.id }}
+              className="block transition-transform active:scale-[0.98]"
+            >
+              <Card className="transition-colors hover:bg-accent/50">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 py-4">
                   <div>
                     <CardTitle className="text-lg">{plan.name}</CardTitle>

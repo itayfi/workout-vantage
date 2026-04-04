@@ -4,6 +4,7 @@ import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/c
 import { Play, Calendar, History, TrendingUp } from 'lucide-react';
 import { useWorkoutPlans } from '@/stores/workout-plans-storage';
 import { cn } from '@/lib/utils';
+import type { ComponentType } from 'react';
 
 export const Route = createRoute({
   getParentRoute: () => rootRoute,
@@ -15,31 +16,27 @@ function Dashboard() {
   const { plans } = useWorkoutPlans();
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-5 duration-500">
+    <div className="flex animate-in flex-col gap-8 duration-500 slide-in-from-bottom-5 fade-in">
       <section className="flex flex-col gap-2">
-        <h1 className="font-heading text-4xl font-extrabold tracking-tight italic">
-          Vantage
-        </h1>
-        <p className="text-muted-foreground text-lg">
-          Ready to crush your goals today?
-        </p>
+        <h1 className="font-heading text-4xl font-extrabold tracking-tight italic">Vantage</h1>
+        <p className="text-lg text-muted-foreground">Ready to crush your goals today?</p>
       </section>
 
       <section className="flex flex-col gap-6">
         {/* Quick Actions - User Requested Above Stats */}
         <div className="grid grid-cols-2 gap-4">
-          <ActionCard 
-            title="Start" 
+          <ActionCard
+            title="Start"
             description="Active plan"
-            icon={Play} 
-            to="/session" 
+            icon={Play}
+            to="/session"
             color="bg-primary text-primary-foreground shadow-primary/20"
           />
-          <ActionCard 
-            title="Plans" 
-            description={plans.length === 0 ? "Create one" : `${plans.length} active`}
-            icon={Calendar} 
-            to="/plans" 
+          <ActionCard
+            title="Plans"
+            description={plans.length === 0 ? 'Create one' : `${plans.length} active`}
+            icon={Calendar}
+            to="/plans"
             color="bg-card border-2 border-border/50"
           />
         </div>
@@ -54,13 +51,21 @@ function Dashboard() {
   );
 }
 
-function StatCard({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{ className?: string }>;
+}) {
   return (
-    <Card className="bg-muted/30 border-none shadow-none">
-      <CardContent className="p-4 flex flex-col gap-1">
+    <Card className="border-none bg-muted/30 shadow-none">
+      <CardContent className="flex flex-col gap-1 p-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Icon className="h-3.5 w-3.5" />
-          <span className="text-[10px] font-black uppercase tracking-wider opacity-70">{label}</span>
+          <span className="text-[10px] font-black tracking-wider uppercase opacity-70">{label}</span>
         </div>
         <div className="text-2xl font-black">{value}</div>
       </CardContent>
@@ -68,23 +73,33 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: string; 
   );
 }
 
-function ActionCard({ title, description, icon: Icon, to, color }: { title: string; description: string; icon: any; to: string; color: string }) {
+function ActionCard({
+  title,
+  description,
+  icon: Icon,
+  to,
+  color,
+}: {
+  title: string;
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+  to: string;
+  color: string;
+}) {
   return (
-    <Link to={to} className="block transition-transform active:scale-95 group">
-      <Card className={cn("relative overflow-hidden border-none shadow-xl h-full", color)}>
-        <CardContent className="p-5 flex flex-col gap-3">
+    <Link to={to} className="group block transition-transform active:scale-95">
+      <Card className={cn('relative h-full overflow-hidden border-none shadow-xl', color)}>
+        <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background/20 backdrop-blur-md">
             <Icon className="h-6 w-6 fill-current" />
           </div>
           <div>
             <CardTitle className="text-xl font-bold">{title}</CardTitle>
-            <CardDescription className="text-inherit opacity-70 line-clamp-1 text-xs">
-              {description}
-            </CardDescription>
+            <CardDescription className="line-clamp-1 text-xs text-inherit opacity-70">{description}</CardDescription>
           </div>
         </CardContent>
         {/* Decorative element */}
-        <div className="absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-white/10 blur-2xl group-hover:bg-white/20 transition-colors" />
+        <div className="absolute -right-6 -bottom-6 h-20 w-20 rounded-full bg-white/10 blur-2xl transition-colors group-hover:bg-white/20" />
       </Card>
     </Link>
   );

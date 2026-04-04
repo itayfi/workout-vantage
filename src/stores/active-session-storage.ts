@@ -19,7 +19,8 @@ export interface ActiveSessionState {
   currentSlotIndex: number;
   currentSetIndex: number;
   selectedMachineId: string | null;
-  logs: Record<number, PerformanceLog[]>;
+  // slotIndex -> machineId -> PerformanceLog[]
+  logs: Record<number, Record<string, PerformanceLog[]>>;
   sessionTargetSets: Record<number, number>;
   startTime: number | null;
   _hasHydrated: boolean;
@@ -28,8 +29,8 @@ export interface ActiveSessionState {
   startSession: (planId: string, initialMachineId: string | null, initialSlotSets: { slotIndex: number, sets: number }[]) => void;
   updateStatus: (status: SessionStatus) => void;
   updateSet: (slotIndex: number, setIndex: number) => void;
-  updateMachine: (machineId: string | null) => void;
-  logSet: (slotIndex: number, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
+  updateMachine: (machineId: string) => void;
+  logSet: (slotIndex: number, machineId: string, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
   addExtraSet: (slotIndex: number) => void;
   capSessionSets: (slotIndex: number, newCount: number) => void;
   resetSession: () => void;
@@ -37,7 +38,7 @@ export interface ActiveSessionState {
 
 export const useActiveSession = create<ActiveSessionState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       status: 'SELECTING',
       activePlanId: null,
       currentSlotIndex: 0,
@@ -69,12 +70,25 @@ export const useActiveSession = create<ActiveSessionState>()(
       updateSet: (slotIndex, setIndex) => 
         set({ currentSlotIndex: slotIndex, currentSetIndex: setIndex }),
 
-      updateMachine: (machineId) => set({ selectedMachineId: machineId }),
+      updateMachine: (machineId) => {
+        const state = get();
+        const slotLogs = state.logs[state.currentSlotIndex] || {};
+        const machineLogs = slotLogs[machineId] || [];
+        
+        set({ 
+          selectedMachineId: machineId,
+          currentSetIndex: machineLogs.length
+        });
+      },
 
-      logSet: (slotIndex, setIndex, log) => 
+      logSet: (slotIndex, machineId, setIndex, log) => 
         set((state) => {
-          const slotLogs = [...(state.logs[slotIndex] || [])];
-          slotLogs[setIndex] = { ...log, timestamp: Date.now() };
+          const slotLogs = { ...(state.logs[slotIndex] || {}) };
+          const machineLogs = [...(slotLogs[machineId] || [])];
+          
+          machineLogs[setIndex] = { ...log, timestamp: Date.now() };
+          slotLogs[machineId] = machineLogs;
+          
           return {
             logs: { ...state.logs, [slotIndex]: slotLogs }
           };

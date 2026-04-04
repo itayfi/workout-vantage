@@ -81,18 +81,28 @@ function Session() {
   const activePlan = plans.find(p => p.id === activePlanId);
   const currentSlot = activePlan?.slots[currentSlotIndex];
   const currentMachine = currentSlot?.alternatives.find(a => a.id === selectedMachineId);
+  
+  // Total sets done in THIS slot across ALL machines
+  const slotTotalDoneCount = React.useMemo(() => {
+     const slotLogs = logs[currentSlotIndex] || {};
+     return Object.values(slotLogs).flat().length;
+  }, [logs, currentSlotIndex]);
+
+  // Current target for THIS slot
   const currentTargetSetsCount = sessionTargetSets[currentSlotIndex] || currentSlot?.targetSets || 0;
 
   const isSlotDone = React.useCallback((idx: number) => {
-    const slotLogs = logs[idx] || [];
-    const targets = sessionTargetSets[idx] || (activePlan as WorkoutPlan)?.slots[idx]?.targetSets || 0;
-    return slotLogs.length >= targets && targets > 0;
+    const slotLogs = logs[idx] || {};
+    const totalDone = Object.values(slotLogs).flat().length;
+    const target = sessionTargetSets[idx] || (activePlan as WorkoutPlan)?.slots[idx]?.targetSets || 0;
+    return totalDone >= target && target > 0;
   }, [logs, sessionTargetSets, activePlan]);
 
   const finalizeWorkout = React.useCallback(() => {
      if (!activePlan) return;
      
-     const totalSets = Object.values(logs).flat().length;
+     const flatLogs = Object.values(logs).map(slot => Object.values(slot).flat()).flat();
+     const totalSets = flatLogs.length;
      const totalExercises = Object.keys(logs).length;
 
      addWorkout({
@@ -111,7 +121,8 @@ function Session() {
 
   const updateSlotIndex = React.useCallback((newIdx: number) => {
     if (newIdx !== currentSlotIndex) {
-       const currentProgress = (logs[currentSlotIndex] || []).length;
+       const slotLogs = logs[currentSlotIndex] || {};
+       const currentProgress = Object.values(slotLogs).flat().length;
        const currentTarget = sessionTargetSets[currentSlotIndex] || (activePlan as WorkoutPlan)?.slots[currentSlotIndex]?.targetSets || 0;
        
        if (currentProgress > 0 && currentProgress < currentTarget) {
@@ -119,26 +130,26 @@ function Session() {
        }
     }
 
-    const slotLogs = logs[newIdx] || [];
-    updateSet(newIdx, slotLogs.length);
-    
-    if (slotLogs.length === 0) {
-       updateMachine(null); 
-    }
-  }, [currentSlotIndex, logs, sessionTargetSets, activePlan, capSessionSets, updateSet, updateMachine]);
+    // When switching slots, we don't know the machine yet, so we just set currentSlotIndex
+    // updateMachine (called from UI) will then find the correct currentSetIndex for the specific machine
+    updateSet(newIdx, 0); 
+  }, [currentSlotIndex, logs, sessionTargetSets, activePlan, capSessionSets, updateSet]);
 
   const handleNextStep = React.useCallback(() => {
     if (!currentSlot) return;
 
-    if (currentSetIndex < currentTargetSetsCount - 1) {
-      updateSet(currentSlotIndex, currentSetIndex + 1);
+    if (slotTotalDoneCount < currentTargetSetsCount) {
+      // Stay in exercise mode but update set index for THIS machine
+      const machineLogs = (logs[currentSlotIndex] || {})[selectedMachineId || ''] || [];
+      updateSet(currentSlotIndex, machineLogs.length);
       updateStatus('EXERCISE');
     } else {
+      // Slot finished
       updateStatus('CHOOSING_NEXT');
     }
     setIsTimerRunning(false);
     setTimer(0);
-  }, [currentSlot, currentSetIndex, currentTargetSetsCount, currentSlotIndex, updateSet, updateStatus]);
+  }, [currentSlot, slotTotalDoneCount, currentTargetSetsCount, currentSlotIndex, selectedMachineId, logs, updateSet, updateStatus]);
 
   React.useEffect(() => {
     if (currentSlot) {
@@ -185,7 +196,7 @@ function Session() {
 
   const handleCompleteSet = () => {
     if (!currentMachine || !currentSlot) return;
-    logSet(currentSlotIndex, currentSetIndex, { 
+    logSet(currentSlotIndex, currentMachine.id, currentSetIndex, { 
        reps: actualReps, 
        weight: actualWeight,
        machineId: currentMachine.id,
@@ -198,7 +209,7 @@ function Session() {
   };
 
   const skipToNextExercise = () => {
-    const currentProgress = (logs[currentSlotIndex] || []).length;
+    const currentProgress = Object.values(logs[currentSlotIndex] || {}).flat().length;
     const currentTarget = sessionTargetSets[currentSlotIndex] || (activePlan as WorkoutPlan)?.slots[currentSlotIndex]?.targetSets || 0;
 
     if (currentProgress > 0 && currentProgress < currentTarget) {
@@ -265,7 +276,7 @@ function Session() {
                   <CardContent className="p-6 text-left">
                      <span className="text-[10px] font-black uppercase text-accent-amber opacity-40">Total Volume</span>
                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black italic text-accent-amber">{Object.values(logs).flat().length}</span>
+                        <span className="text-3xl font-black italic text-accent-amber">{Object.values(logs).map(slot => Object.values(slot).flat()).flat().length}</span>
                         <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest text-accent-amber">Sets</span>
                      </div>
                   </CardContent>
@@ -283,31 +294,24 @@ function Session() {
                   </Button>
                </CollapsibleTrigger>
                <CollapsibleContent className="space-y-4 pt-4 animate-in slide-in-from-top-2 duration-300">
-                  {Object.entries(logs).sort((a, b) => Number(a[0]) - Number(b[0])).map(([slotIdxStr, slotLogs]) => {
+                  {Object.entries(logs).sort((a, b) => Number(a[0]) - Number(b[0])).map(([slotIdxStr, slotMachines]) => {
                      const slotIdx = Number(slotIdxStr);
                      const slot = (activePlan as WorkoutPlan)?.slots[slotIdx];
-                     const muscleName = slot?.targetMuscle || slotLogs[0]?.muscleName || `Group ${slotIdx + 1}`;
+                     const allSlotLogs = Object.values(slotMachines).flat();
+                     const muscleName = slot?.targetMuscle || allSlotLogs[0]?.muscleName || `Group ${slotIdx + 1}`;
 
                      return (
                         <Card key={slotIdx} className="border-none bg-muted/10 text-left overflow-hidden">
                            <div className="bg-muted/20 px-4 py-2 border-b border-border/10 flex justify-between items-center">
                               <span className="text-[10px] font-black uppercase tracking-wider text-primary">{muscleName}</span>
-                              <span className="text-[9px] font-bold opacity-40 uppercase">{slotLogs.length} sets completed</span>
+                              <span className="text-[9px] font-bold opacity-40 uppercase">{allSlotLogs.length} sets completed</span>
                            </div>
-                           <CardContent className="p-4 space-y-3">
-                              {slotLogs.reduce((acc, log) => {
-                                 const last = acc[acc.length - 1];
-                                 if (last && last.machineId === log.machineId) {
-                                    last.sets.push(log);
-                                 } else {
-                                    acc.push({ machineId: log.machineId, machineName: log.machineName, sets: [log] });
-                                 }
-                                 return acc;
-                              }, [] as { machineId: string, machineName: string, sets: PerformanceLog[] }[]).map((group, gIdx) => (
-                                 <div key={gIdx} className="space-y-1.5">
-                                    <div className="text-xs font-black italic uppercase opacity-80">{group.machineName}</div>
+                           <CardContent className="p-4 space-y-4">
+                              {Object.entries(slotMachines).map(([mId, mLogs], gIdx) => (
+                                 <div key={mId + gIdx} className="space-y-1.5">
+                                    <div className="text-xs font-black italic uppercase opacity-80">{mLogs[0]?.machineName || "Exercise"}</div>
                                     <div className="grid grid-cols-3 gap-2">
-                                       {group.sets.map((s, sIdx) => (
+                                       {mLogs.map((s, sIdx) => (
                                           <div key={sIdx} className="bg-background/40 rounded-lg p-2 flex flex-col items-center border border-border/10">
                                              <span className="text-[8px] font-black uppercase opacity-20 mb-1">Set {sIdx + 1}</span>
                                              <div className="flex items-center gap-1 font-black leading-none">
@@ -612,7 +616,7 @@ function Session() {
                  </div>
                  <div className="flex gap-1.5">
                     {Array.from({ length: currentTargetSetsCount }).map((_, i) => (
-                       <div key={i} className={cn("h-1 w-3 rounded-full", i === currentSetIndex ? "bg-accent-amber" : i < currentSetIndex ? "bg-primary" : "bg-muted")} />
+                       <div key={i} className={cn("h-1 w-3 rounded-full", i === currentSetIndex ? "bg-accent-amber" : i < (currentSetIndex) ? "bg-primary" : "bg-muted")} />
                     ))}
                  </div>
               </div>
@@ -731,7 +735,7 @@ function Session() {
                  className="h-20 w-full text-xl font-black shadow-lg" 
                  onClick={handleNextStep}
               >
-                 {currentSetIndex < currentTargetSetsCount - 1 ? 'NEXT SET' : 'PROCEED TO NEXT'}
+                 {slotTotalDoneCount < currentTargetSetsCount ? 'NEXT SET' : 'CHOOSE NEXT EXERCISE'}
               </Button>
               <Button variant="ghost" className="font-black text-[10px] uppercase tracking-widest opacity-40 hover:opacity-100" onClick={skipToNextExercise}>
                  Skip to Next Exercise

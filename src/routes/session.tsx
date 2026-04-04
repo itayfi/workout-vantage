@@ -2,9 +2,9 @@ import * as React from 'react';
 import { createRoute } from '@tanstack/react-router';
 import { Route as rootRoute } from './__root';
 import { Button } from '@/components/ui/button';
-import { useWorkoutPlans } from '@/stores/workout-plans-storage';
+import { useWorkoutPlans, type WorkoutPlan } from '@/stores/workout-plans-storage';
 import { useActiveSession } from '@/stores/active-session-storage';
-import { useWorkoutHistory } from '@/stores/workout-history-storage';
+import { useWorkoutHistory, type PerformanceLog } from '@/stores/workout-history-storage';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { 
   Play, 
@@ -14,7 +14,6 @@ import {
   Loader2, 
   Minus, 
   Plus, 
-  Zap, 
   MoreHorizontal, 
   Power, 
   RotateCcw, 
@@ -23,7 +22,10 @@ import {
   LayoutGrid,
   CheckCircle2,
   ListIcon,
-  Flag
+  Flag,
+  ChevronDown,
+  Trophy,
+  Activity
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Link } from '@tanstack/react-router';
@@ -46,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export const Route = createRoute({
   getParentRoute: () => rootRoute,
@@ -73,6 +76,7 @@ function Session() {
   const [timer, setTimer] = React.useState(0);
   const [isTimerRunning, setIsTimerRunning] = React.useState(false);
   const [isSelectionDrawerOpen, setIsSelectionDrawerOpen] = React.useState(false);
+  const [isBreakdownOpen, setIsBreakdownOpen] = React.useState(false);
 
   const activePlan = plans.find(p => p.id === activePlanId);
   const currentSlot = activePlan?.slots[currentSlotIndex];
@@ -81,7 +85,7 @@ function Session() {
 
   const isSlotDone = React.useCallback((idx: number) => {
     const slotLogs = logs[idx] || [];
-    const targets = sessionTargetSets[idx] || activePlan?.slots[idx]?.targetSets || 0;
+    const targets = sessionTargetSets[idx] || (activePlan as WorkoutPlan)?.slots[idx]?.targetSets || 0;
     return slotLogs.length >= targets && targets > 0;
   }, [logs, sessionTargetSets, activePlan]);
 
@@ -108,16 +112,17 @@ function Session() {
   const updateSlotIndex = React.useCallback((newIdx: number) => {
     if (newIdx !== currentSlotIndex) {
        const currentProgress = (logs[currentSlotIndex] || []).length;
-       const currentTarget = sessionTargetSets[currentSlotIndex] || activePlan?.slots[currentSlotIndex]?.targetSets || 0;
+       const currentTarget = sessionTargetSets[currentSlotIndex] || (activePlan as WorkoutPlan)?.slots[currentSlotIndex]?.targetSets || 0;
        
        if (currentProgress > 0 && currentProgress < currentTarget) {
           capSessionSets(currentSlotIndex, currentProgress);
        }
     }
 
-    updateSet(newIdx, 0);
-    const logsExist = (logs[newIdx] || []).length > 0;
-    if (!logsExist) {
+    const slotLogs = logs[newIdx] || [];
+    updateSet(newIdx, slotLogs.length);
+    
+    if (slotLogs.length === 0) {
        updateMachine(null); 
     }
   }, [currentSlotIndex, logs, sessionTargetSets, activePlan, capSessionSets, updateSet, updateMachine]);
@@ -135,7 +140,6 @@ function Session() {
     setTimer(0);
   }, [currentSlot, currentSetIndex, currentTargetSetsCount, currentSlotIndex, updateSet, updateStatus]);
 
-  // Sync state with current set/slot when they change
   React.useEffect(() => {
     if (currentSlot) {
       setActualReps(currentSlot.targetReps);
@@ -143,14 +147,12 @@ function Session() {
     }
   }, [currentSlotIndex, currentSetIndex, currentSlot]);
 
-  // Auto-open drawer if machine/slot not selected or if starting
   React.useEffect(() => {
     if (status === 'EXERCISE' && activePlan && !selectedMachineId && !isSelectionDrawerOpen) {
       setIsSelectionDrawerOpen(true);
     }
   }, [status, activePlan, selectedMachineId, isSelectionDrawerOpen]);
 
-  // Timer logic + Auto progression
   React.useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (isTimerRunning && timer > 0) {
@@ -182,7 +184,14 @@ function Session() {
   };
 
   const handleCompleteSet = () => {
-    logSet(currentSlotIndex, currentSetIndex, { reps: actualReps, weight: actualWeight });
+    if (!currentMachine || !currentSlot) return;
+    logSet(currentSlotIndex, currentSetIndex, { 
+       reps: actualReps, 
+       weight: actualWeight,
+       machineId: currentMachine.id,
+       machineName: currentMachine.name,
+       muscleName: currentSlot.targetMuscle
+    });
     setTimer(60);
     setIsTimerRunning(true);
     updateStatus('RESTING');
@@ -190,7 +199,7 @@ function Session() {
 
   const skipToNextExercise = () => {
     const currentProgress = (logs[currentSlotIndex] || []).length;
-    const currentTarget = sessionTargetSets[currentSlotIndex] || activePlan?.slots[currentSlotIndex]?.targetSets || 0;
+    const currentTarget = sessionTargetSets[currentSlotIndex] || (activePlan as WorkoutPlan)?.slots[currentSlotIndex]?.targetSets || 0;
 
     if (currentProgress > 0 && currentProgress < currentTarget) {
        capSessionSets(currentSlotIndex, currentProgress);
@@ -233,27 +242,94 @@ function Session() {
 
   if (status === 'SUMMARY') {
      return (
-        <div className="flex flex-col gap-8 text-center animate-in fade-in zoom-in-95 duration-500 py-12">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-accent-gold/20 text-accent-gold border-2 border-accent-gold animate-pulse">
-               <Zap className="h-10 w-10 fill-current" />
+        <div className="flex flex-col gap-8 text-center animate-in fade-in zoom-in-95 duration-500 py-12 pb-32">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-accent-gold/20 text-accent-gold border-2 border-accent-gold shadow-[0_0_30px_rgba(251,191,36,0.2)] animate-pulse">
+               <Trophy className="h-12 w-12" />
             </div>
             <div className="flex flex-col gap-2">
-               <h1 className="text-4xl font-black italic">WORKOUT COMPLETE</h1>
-               <p className="text-muted-foreground uppercase text-xs font-black tracking-[0.2em]">You absolute beast!</p>
+               <h1 className="text-4xl font-black italic tracking-tighter">WORKOUT COMPLETE</h1>
+               <p className="text-muted-foreground uppercase text-xs font-black tracking-[0.2em] opacity-60">Session logged to history</p>
             </div>
-            <Card className="bg-muted/30 border-none">
-               <CardContent className="p-6 grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1 text-left">
-                     <span className="text-[10px] font-black uppercase opacity-50">Exercises</span>
-                     <span className="text-2xl font-black">{Object.keys(logs).length}</span>
-                  </div>
-                  <div className="flex flex-col gap-1 text-left">
-                     <span className="text-[10px] font-black text-accent-amber uppercase opacity-50">Total Sets</span>
-                     <span className="text-2xl font-black italic text-accent-amber">{Object.values(logs).flat().length}</span>
-                  </div>
-               </CardContent>
-            </Card>
-            <Button size="lg" className="h-16 text-xl font-black italic w-full" onClick={resetSession}>DONE</Button>
+            
+            <div className="grid grid-cols-2 gap-4">
+               <Card className="bg-muted/30 border-none">
+                  <CardContent className="p-6 text-left">
+                     <span className="text-[10px] font-black uppercase opacity-40">Exercises</span>
+                     <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-black italic">{Object.keys(logs).length}</span>
+                        <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest">Groups</span>
+                     </div>
+                  </CardContent>
+               </Card>
+               <Card className="bg-muted/30 border-none">
+                  <CardContent className="p-6 text-left">
+                     <span className="text-[10px] font-black uppercase text-accent-amber opacity-40">Total Volume</span>
+                     <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-black italic text-accent-amber">{Object.values(logs).flat().length}</span>
+                        <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest text-accent-amber">Sets</span>
+                     </div>
+                  </CardContent>
+               </Card>
+            </div>
+
+            <Collapsible open={isBreakdownOpen} onOpenChange={setIsBreakdownOpen} className="w-full">
+               <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full flex justify-between items-center group py-6 bg-muted/20">
+                     <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                        <Activity className="h-3 w-3" />
+                        Detailed Breakdown
+                     </span>
+                     <ChevronDown className={cn("h-4 w-4 transition-transform duration-300", isBreakdownOpen && "rotate-180")} />
+                  </Button>
+               </CollapsibleTrigger>
+               <CollapsibleContent className="space-y-4 pt-4 animate-in slide-in-from-top-2 duration-300">
+                  {Object.entries(logs).sort((a, b) => Number(a[0]) - Number(b[0])).map(([slotIdxStr, slotLogs]) => {
+                     const slotIdx = Number(slotIdxStr);
+                     const slot = (activePlan as WorkoutPlan)?.slots[slotIdx];
+                     const muscleName = slot?.targetMuscle || slotLogs[0]?.muscleName || `Group ${slotIdx + 1}`;
+
+                     return (
+                        <Card key={slotIdx} className="border-none bg-muted/10 text-left overflow-hidden">
+                           <div className="bg-muted/20 px-4 py-2 border-b border-border/10 flex justify-between items-center">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-primary">{muscleName}</span>
+                              <span className="text-[9px] font-bold opacity-40 uppercase">{slotLogs.length} sets completed</span>
+                           </div>
+                           <CardContent className="p-4 space-y-3">
+                              {slotLogs.reduce((acc, log) => {
+                                 const last = acc[acc.length - 1];
+                                 if (last && last.machineId === log.machineId) {
+                                    last.sets.push(log);
+                                 } else {
+                                    acc.push({ machineId: log.machineId, machineName: log.machineName, sets: [log] });
+                                 }
+                                 return acc;
+                              }, [] as { machineId: string, machineName: string, sets: PerformanceLog[] }[]).map((group, gIdx) => (
+                                 <div key={gIdx} className="space-y-1.5">
+                                    <div className="text-xs font-black italic uppercase opacity-80">{group.machineName}</div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                       {group.sets.map((s, sIdx) => (
+                                          <div key={sIdx} className="bg-background/40 rounded-lg p-2 flex flex-col items-center border border-border/10">
+                                             <span className="text-[8px] font-black uppercase opacity-20 mb-1">Set {sIdx + 1}</span>
+                                             <div className="flex items-center gap-1 font-black leading-none">
+                                                <span className="text-lg italic">{s.reps}</span>
+                                                <span className="text-[8px] opacity-40 tracking-tighter">×</span>
+                                                <span className="text-lg italic text-accent-amber">{s.weight}</span>
+                                             </div>
+                                          </div>
+                                       ))}
+                                    </div>
+                                 </div>
+                              ))}
+                           </CardContent>
+                        </Card>
+                     );
+                  })}
+               </CollapsibleContent>
+            </Collapsible>
+
+            <Button size="lg" className="h-16 text-xl font-black italic w-full shadow-2xl shadow-primary/20" onClick={resetSession}>
+               HOME
+            </Button>
         </div>
      );
   }
@@ -458,7 +534,7 @@ function Session() {
 
                  <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1 rounded-2xl bg-muted/60 p-4 border border-border/50">
-                       <span className="text-[10px] font-black uppercase opacity-40">Set Goal</span>
+                       <span className="text-[10px] font-black uppercase opacity-40">Set Progress</span>
                        <div className="flex items-baseline gap-1">
                           <span className="text-4xl font-black italic">{currentSetIndex + 1}</span>
                           <span className="text-xl font-bold opacity-20">/ {currentTargetSetsCount}</span>

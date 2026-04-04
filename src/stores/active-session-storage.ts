@@ -7,6 +7,9 @@ export type SessionStatus = 'SELECTING' | 'EXERCISE' | 'RESTING' | 'CHOOSING_NEX
 export interface PerformanceLog {
   reps: number;
   weight: number;
+  machineId: string;
+  machineName: string;
+  muscleName: string;
   timestamp: number;
 }
 

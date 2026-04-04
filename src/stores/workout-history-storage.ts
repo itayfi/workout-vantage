@@ -5,6 +5,9 @@ import localforage from 'localforage';
 export interface PerformanceLog {
   reps: number;
   weight: number;
+  machineId: string;
+  machineName: string;
+  muscleName: string;
   timestamp: number;
 }
 
@@ -36,7 +39,7 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()(
         history: [
           { ...workout, id: Math.random().toString(36).substring(2, 9) },
           ...state.history
-        ].slice(0, 100) // Keep last 100 workouts
+        ].slice(0, 100)
       })),
       clearHistory: () => set({ history: [] }),
     }),

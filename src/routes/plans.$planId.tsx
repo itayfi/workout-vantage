@@ -11,25 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useForm, useFieldArray, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 const variantSchema = z.object({
   id: z.string(),
-  name: z.string().min(2, "Name too short"),
+  name: z.string().min(2, 'Name too short'),
   machineType: z.string(),
   weightStep: z.number().min(0),
 });
 
 const slotSchema = z.object({
   id: z.string(),
-  targetMuscle: z.string().min(2, "Muscle required"),
+  targetMuscle: z.string().min(2, 'Muscle required'),
   alternatives: z.array(variantSchema),
   targetSets: z.number().min(1),
   targetReps: z.number().min(1),
@@ -38,7 +31,7 @@ const slotSchema = z.object({
 
 const planSchema = z.object({
   id: z.string(),
-  name: z.string().min(2, "Plan name required"),
+  name: z.string().min(2, 'Plan name required'),
   slots: z.array(slotSchema),
 });
 
@@ -65,9 +58,13 @@ function PlanEditor() {
     },
   });
 
-  const { fields: slots, append: appendSlot, remove: removeSlot } = useFieldArray({
+  const {
+    fields: slots,
+    append: appendSlot,
+    remove: removeSlot,
+  } = useFieldArray({
     control: form.control,
-    name: "slots",
+    name: 'slots',
   });
 
   // Initialize once hydrated
@@ -108,14 +105,17 @@ function PlanEditor() {
     return (
       <div className="flex h-[60vh] w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
-        <span className="text-xs font-black uppercase tracking-widest opacity-20">Loading Plan</span>
+        <span className="text-xs font-black tracking-widest uppercase opacity-20">Loading Plan</span>
       </div>
     );
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex animate-in flex-col gap-6 pb-40 duration-500 slide-in-from-right-5 fade-in overflow-x-hidden">
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="flex animate-in flex-col gap-6 overflow-x-hidden pb-40 duration-500 slide-in-from-right-5 fade-in md:pb-20"
+      >
         <div className="flex items-center gap-4">
           <Button type="button" variant="ghost" size="icon" onClick={() => navigate({ to: '/plans' })}>
             <ArrowLeft className="h-5 w-5" />
@@ -127,7 +127,7 @@ function PlanEditor() {
               <FormItem className="flex-1">
                 <FormControl>
                   <Input
-                    className="h-auto border-none bg-transparent text-2xl font-black focus-visible:ring-0 px-1"
+                    className="h-auto border-none bg-transparent text-3xl font-black focus-visible:ring-0"
                     {...field}
                   />
                 </FormControl>
@@ -139,37 +139,31 @@ function PlanEditor() {
 
         <div className="flex flex-col gap-4">
           {slots.map((item, index) => (
-            <MuscleSlotItem 
-              key={item.id} 
-              index={index} 
-              control={form.control} 
-              onRemove={() => removeSlot(index)} 
-            />
+            <MuscleSlotItem key={item.id} index={index} control={form.control} onRemove={() => removeSlot(index)} />
           ))}
 
           <Button
             type="button"
             variant="outline"
-            className="flex h-20 flex-col gap-1 border-2 border-dashed bg-muted/10 hover:bg-muted/20 transition-colors"
-            onClick={() => appendSlot({
-              id: Math.random().toString(36).substring(2, 11),
-              targetMuscle: 'Muscle Group',
-              alternatives: [],
-              targetSets: 3,
-              targetReps: 12,
-            })}
+            className="flex h-20 flex-col gap-1 border-2 border-dashed bg-muted/10 transition-colors hover:bg-muted/20"
+            onClick={() =>
+              appendSlot({
+                id: Math.random().toString(36).substring(2, 11),
+                targetMuscle: 'Muscle Group',
+                alternatives: [],
+                targetSets: 3,
+                targetReps: 12,
+              })
+            }
           >
             <Plus className="h-5 w-5 text-primary" />
             <span className="font-bold">Add Muscle Group Slot</span>
           </Button>
         </div>
 
-        <div className="fixed bottom-20 left-0 right-0 z-50 p-4 bg-background/80 backdrop-blur-md border-t border-border/50">
+        <div className="fixed right-0 bottom-20 left-0 z-50 border-t border-border/50 bg-background/80 p-4 backdrop-blur-md md:bottom-0">
           <div className="mx-auto max-w-lg">
-            <Button
-              type="submit"
-              className="h-14 w-full text-lg font-black shadow-2xl shadow-primary/40"
-            >
+            <Button type="submit" className="h-14 w-full text-lg font-black shadow-2xl shadow-primary/40">
               <Save className="mr-2 h-5 w-5" />
               Save Plan
             </Button>
@@ -180,8 +174,20 @@ function PlanEditor() {
   );
 }
 
-function MuscleSlotItem({ index, control, onRemove }: { index: number, control: Control<PlanFormValues>, onRemove: () => void }) {
-  const { fields, append: appendMachine, remove: removeMachine } = useFieldArray({
+function MuscleSlotItem({
+  index,
+  control,
+  onRemove,
+}: {
+  index: number;
+  control: Control<PlanFormValues>;
+  onRemove: () => void;
+}) {
+  const {
+    fields,
+    append: appendMachine,
+    remove: removeMachine,
+  } = useFieldArray({
     control,
     name: `slots.${index}.alternatives` as const,
   });
@@ -209,7 +215,7 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
               <FormItem>
                 <FormControl>
                   <Input
-                    className="h-8 max-w-[200px] border-none bg-transparent font-bold focus-visible:ring-0 px-2"
+                    className="h-8 max-w-[200px] border-none bg-transparent px-2 font-bold focus-visible:ring-0"
                     {...field}
                   />
                 </FormControl>
@@ -234,13 +240,11 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
             name={`slots.${index}.targetSets`}
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
-                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">Sets</FormLabel>
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Sets
+                </FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    {...field} 
-                    onChange={e => field.onChange(parseInt(e.target.value))}
-                  />
+                  <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value))} />
                 </FormControl>
               </FormItem>
             )}
@@ -250,13 +254,11 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
             name={`slots.${index}.targetReps`}
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
-                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">Target Reps</FormLabel>
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Target Reps
+                </FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    {...field}
-                    onChange={e => field.onChange(parseInt(e.target.value))}
-                  />
+                  <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value))} />
                 </FormControl>
               </FormItem>
             )}
@@ -265,16 +267,18 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
             control={control}
             name={`slots.${index}.targetWeight`}
             render={({ field }) => (
-              <FormItem className="flex flex-col gap-1 col-span-2">
-                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">Target Weight (kg - Optional)</FormLabel>
+              <FormItem className="col-span-2 flex flex-col gap-1">
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Target Weight (kg - Optional)
+                </FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
+                  <Input
+                    type="number"
                     step="0.5"
                     placeholder="e.g. 20"
                     {...field}
                     value={field.value ?? ''}
-                    onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                    onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
                   />
                 </FormControl>
               </FormItem>
@@ -289,7 +293,7 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
           {machines.map((alt, altIndex) => (
             <div
               key={alt.id}
-              className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 p-2 group/machine"
+              className="group/machine flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 p-2"
             >
               <div className="flex-1 text-sm font-medium">
                 {alt.name} <span className="ml-2 text-[10px] opacity-70">({alt.weightStep}kg)</span>
@@ -298,7 +302,7 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 opacity-0 group-hover/machine:opacity-30 hover:opacity-100! transition-opacity"
+                className="h-6 w-6 opacity-0 transition-opacity group-hover/machine:opacity-30 hover:opacity-100!"
                 onClick={() => removeMachine(altIndex)}
               >
                 <Trash2 className="h-3 w-3" />
@@ -357,18 +361,23 @@ function MuscleSlotItem({ index, control, onRemove }: { index: number, control: 
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" onClick={() => {
-                  if (newMachine.name) {
-                    appendMachine({
-                      id: Math.random().toString(36).substring(2, 11),
-                      name: newMachine.name,
-                      machineType: newMachine.machineType || 'Machine',
-                      weightStep: newMachine.weightStep || 2.5,
-                    });
-                    setNewMachine({ name: '', machineType: 'Machine', weightStep: 2.5 });
-                    setIsAddingMachine(false);
-                  }
-                }}>Add to Slot</Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (newMachine.name) {
+                      appendMachine({
+                        id: Math.random().toString(36).substring(2, 11),
+                        name: newMachine.name,
+                        machineType: newMachine.machineType || 'Machine',
+                        weightStep: newMachine.weightStep || 2.5,
+                      });
+                      setNewMachine({ name: '', machineType: 'Machine', weightStep: 2.5 });
+                      setIsAddingMachine(false);
+                    }
+                  }}
+                >
+                  Add to Slot
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

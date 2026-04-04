@@ -24,9 +24,15 @@ function RootLayout() {
           </Link>
 
           <nav className="hidden items-center gap-6 md:flex">
-            <NavLink to="/" icon={LayoutDashboard}>Dashboard</NavLink>
-            <NavLink to="/plans" icon={Calendar}>Plans</NavLink>
-            <NavLink to="/history" icon={Clock}>History</NavLink>
+            <NavLink to="/" icon={LayoutDashboard}>
+              Dashboard
+            </NavLink>
+            <NavLink to="/plans" icon={Calendar}>
+              Plans
+            </NavLink>
+            <NavLink to="/history" icon={Clock}>
+              History
+            </NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -39,7 +45,7 @@ function RootLayout() {
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               <span className="sr-only">Toggle theme</span>
             </Button>
-            
+
             <Link to="/session">
               <Button className="font-semibold shadow-lg shadow-primary/20">
                 <Play className="mr-2 h-4 w-4 fill-current" />
@@ -51,13 +57,13 @@ function RootLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="container mx-auto flex-1 px-4 py-8 overflow-x-hidden">
+      <main className="container mx-auto flex-1 overflow-x-hidden px-4 py-8">
         <Outlet />
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed -bottom-px left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-t border-border/50 pb-safe">
-        <div className="flex items-center justify-around h-16 max-w-md mx-auto px-6">
+      <nav className="pb-safe fixed right-0 -bottom-px left-0 z-50 border-t border-border/50 bg-background/80 backdrop-blur-lg md:hidden">
+        <div className="mx-auto flex h-16 max-w-md items-center justify-around px-6">
           <MobileNavLink to="/" icon={LayoutDashboard} label="Home" />
           <MobileNavLink to="/plans" icon={Calendar} label="Plans" />
           <MobileNavLink to="/session" icon={Play} label="Start" />
@@ -84,14 +90,14 @@ function NavLink({ to, icon: Icon, children }: { to: string; icon: LucideIcon; c
 
 function MobileNavLink({ to, icon: Icon, label }: { to: string; icon: LucideIcon; label: string }) {
   return (
-    <Link 
-      to={to} 
+    <Link
+      to={to}
       className="flex flex-col items-center gap-1 text-muted-foreground transition-colors [&.active]:text-primary"
     >
       <div className="flex h-5 w-5 items-center justify-center">
         <Icon className="h-5 w-5" />
       </div>
-      <span className="text-[10px] font-medium leading-none">{label}</span>
+      <span className="text-[10px] leading-none font-medium">{label}</span>
     </Link>
   );
 }

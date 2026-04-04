@@ -51,7 +51,7 @@ function RootLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="container mx-auto flex-1 px-4 py-8">
+      <main className="container mx-auto flex-1 px-4 py-8 overflow-x-hidden">
         <Outlet />
       </main>
 

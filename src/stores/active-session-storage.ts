@@ -2,45 +2,35 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import localforage from 'localforage';
 
-export type SessionStatus = 'SELECTING' | 'EXERCISE' | 'RESTING' | 'SUMMARY';
+export type SessionStatus = 'SELECTING' | 'EXERCISE' | 'RESTING' | 'CHOOSING_NEXT' | 'SUMMARY';
 
 export interface PerformanceLog {
   reps: number;
   weight: number;
+  timestamp: number;
 }
 
-interface ActiveSessionState {
+export interface ActiveSessionState {
   status: SessionStatus;
   activePlanId: string | null;
   currentSlotIndex: number;
   currentSetIndex: number;
   selectedMachineId: string | null;
   logs: Record<number, PerformanceLog[]>;
-  sessionTargetSets: Record<number, number>; // Dynamic set counts per slot
+  sessionTargetSets: Record<number, number>;
   startTime: number | null;
   _hasHydrated: boolean;
 
-  setHasHydrated: (state: boolean) => void;
-  startSession: (planId: string, machineId: string | null, planSlots: { slotIndex: number, sets: number }[]) => void;
+  // Actions
+  startSession: (planId: string, initialMachineId: string | null, initialSlotSets: { slotIndex: number, sets: number }[]) => void;
   updateStatus: (status: SessionStatus) => void;
   updateSet: (slotIndex: number, setIndex: number) => void;
   updateMachine: (machineId: string | null) => void;
-  logSet: (slotIndex: number, setIndex: number, log: PerformanceLog) => void;
+  logSet: (slotIndex: number, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
   addExtraSet: (slotIndex: number) => void;
+  capSessionSets: (slotIndex: number, newCount: number) => void;
   resetSession: () => void;
 }
-
-const storage = {
-  getItem: async (name: string): Promise<string | null> => {
-    return (await localforage.getItem(name)) || null;
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await localforage.setItem(name, value);
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await localforage.removeItem(name);
-  },
-};
 
 export const useActiveSession = create<ActiveSessionState>()(
   persist(
@@ -55,64 +45,70 @@ export const useActiveSession = create<ActiveSessionState>()(
       startTime: null,
       _hasHydrated: false,
 
-      setHasHydrated: (state) => set({ _hasHydrated: state }),
-      
-      startSession: (planId, machineId, planSlots) => {
-        const initialTargets = planSlots.reduce((acc, current) => {
-          acc[current.slotIndex] = current.sets;
-          return acc;
-        }, {} as Record<number, number>);
+      startSession: (planId, initialMachineId, initialSlotSets) => {
+        const targetSets: Record<number, number> = {};
+        initialSlotSets.forEach(s => { targetSets[s.slotIndex] = s.sets; });
         
-        set({ 
-          status: 'EXERCISE', 
-          activePlanId: planId, 
-          currentSlotIndex: 0, 
-          currentSetIndex: 0, 
-          selectedMachineId: machineId,
+        set({
+          activePlanId: planId,
+          status: 'EXERCISE',
+          currentSlotIndex: 0,
+          currentSetIndex: 0,
+          selectedMachineId: initialMachineId,
           logs: {},
-          sessionTargetSets: initialTargets,
-          startTime: Date.now() 
+          sessionTargetSets: targetSets,
+          startTime: Date.now(),
         });
       },
 
       updateStatus: (status) => set({ status }),
-      
-      updateSet: (slotIndex, setIndex) => set({ 
-        currentSlotIndex: slotIndex, 
-        currentSetIndex: setIndex 
-      }),
+
+      updateSet: (slotIndex, setIndex) => 
+        set({ currentSlotIndex: slotIndex, currentSetIndex: setIndex }),
 
       updateMachine: (machineId) => set({ selectedMachineId: machineId }),
 
-      logSet: (slotIndex, setIndex, log) => set((state) => {
-        const newLogs = { ...state.logs };
-        if (!newLogs[slotIndex]) newLogs[slotIndex] = [];
-        newLogs[slotIndex][setIndex] = log;
-        return { logs: newLogs };
-      }),
+      logSet: (slotIndex, setIndex, log) => 
+        set((state) => {
+          const slotLogs = [...(state.logs[slotIndex] || [])];
+          slotLogs[setIndex] = { ...log, timestamp: Date.now() };
+          return {
+            logs: { ...state.logs, [slotIndex]: slotLogs }
+          };
+        }),
 
-      addExtraSet: (slotIndex) => set((state) => {
-        const newTargets = { ...state.sessionTargetSets };
-        newTargets[slotIndex] = (newTargets[slotIndex] || 0) + 1;
-        return { sessionTargetSets: newTargets };
-      }),
+      addExtraSet: (slotIndex) => 
+        set((state) => ({ 
+          sessionTargetSets: { 
+            ...state.sessionTargetSets, 
+            [slotIndex]: (state.sessionTargetSets[slotIndex] || 0) + 1 
+          } 
+        })),
 
-      resetSession: () => set({ 
-        status: 'SELECTING', 
-        activePlanId: null, 
-        currentSlotIndex: 0, 
-        currentSetIndex: 0, 
+      capSessionSets: (slotIndex, newCount) =>
+        set((state) => ({
+          sessionTargetSets: {
+            ...state.sessionTargetSets,
+            [slotIndex]: newCount
+          }
+        })),
+
+      resetSession: () => set({
+        status: 'SELECTING',
+        activePlanId: null,
+        currentSlotIndex: 0,
+        currentSetIndex: 0,
         selectedMachineId: null,
         logs: {},
         sessionTargetSets: {},
-        startTime: null 
+        startTime: null,
       }),
     }),
     {
       name: 'active-session-storage',
-      storage: createJSONStorage(() => storage),
+      storage: createJSONStorage(() => localforage),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+        if (state) state._hasHydrated = true;
       },
     }
   )

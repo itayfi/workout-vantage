@@ -138,9 +138,9 @@ function PlanEditor() {
         </div>
 
         <div className="flex flex-col gap-4">
-          {slots.map((_slot, index) => (
+          {slots.map((item, index) => (
             <MuscleSlotItem 
-              key={_slot.id} 
+              key={item.id} 
               index={index} 
               control={form.control} 
               onRemove={() => removeSlot(index)} 

@@ -3,11 +3,11 @@ Use the frontend-design skill to create a distinctive, production-grade frontend
 
 **1. State Management (Zustand + Persist):**
 
-- **Plan Store (`workout-plans-storage`):** \* Manages multiple workout templates.
+- **Plan Store (`workout-plans-storage`):** * Manages multiple workout templates.
   - Each plan contains muscle group "slots."
-  - Handles the global weights map. Toggling a "sync" command updates weights across machines associated with the same muscle group.
-- **History Store (`workout-history-storage`):** \* Appends completed sessions.
-  - Tracks exercise ID, sets completed, reps, weight used, and date.
+  - Exercises have configurable "weight steps" (e.g. 2.5kg or 5kg depending on the machine).
+- **History Store (`workout-history-storage`):** * Appends completed sessions.
+  - Tracks exercise ID, sets completed, reps, weight used, suggested weight (based on rep overloads), and date.
 
 **2. Planning UI:**
 
@@ -18,8 +18,8 @@ Use the frontend-design skill to create a distinctive, production-grade frontend
 **3. Session UI (Adaptive Gym Flow):**
 
 - When starting a plan, instead of a static checklist, show the first planned muscle group slot.
-- The user taps which of the pre-planned exercises they are engaging with based on gym floor availability.
-- A set counter increments weight suggestions if actual reps surpass the target.
+- The user taps a slot, opening a bottom-sheet `Drawer` to pick which of the pre-planned exercises they are engaging with based on gym floor availability.
+- A tracker UI autofills the "Suggested Weight" for that specific exercise based on previous sessions and progress logic, allowing easy (+/-) changes according to the exercise's defined "weight step".
 - An automated, highly visible countdown rest timer triggered by completing a set. Use shadcn's `Progress` component for the timer.
 
 **4. History UI:**

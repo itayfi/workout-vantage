@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createRoute } from '@tanstack/react-router';
 import { Route as rootRoute } from './__root';
-import { useWorkoutHistory, type CompletedWorkout, type PerformanceLog } from '@/stores/workout-history-storage';
+import { useWorkoutHistory, type CompletedWorkout } from '@/stores/workout-history-storage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { History, TrendingUp, Calendar, Zap, Weight, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
@@ -112,7 +112,7 @@ function HistoryView() {
                         Scope
                       </span>
                       <span className="text-xl font-black italic">
-                        {session.totalExercises} <span className="ml-1 text-[10px] uppercase opacity-40">Groups</span>
+                        {session.totalExercises} <span className="ml-1 text-[10px] uppercase opacity-40">Exercises</span>
                       </span>
                     </div>
                   </div>
@@ -123,55 +123,39 @@ function HistoryView() {
                       <span className="px-1 text-[9px] font-black tracking-[0.2em] uppercase opacity-30">
                         Session Breakdown
                       </span>
-                      {Object.entries(session.logs)
-                        .sort((a, b) => Number(a[0]) - Number(b[0]))
-                        .map(([slotIdx, slotMachines]) => {
-                          // Compatibility check for legacy flat array format
-                          const machineGroups = Array.isArray(slotMachines)
-                            ? { legacy: slotMachines as PerformanceLog[] }
-                            : (slotMachines as Record<string, PerformanceLog[]>);
-
-                          const machineList = Object.values(machineGroups);
-                          const firstLog = machineList[0]?.[0];
-                          const muscleName = firstLog?.muscleName || `Group ${Number(slotIdx) + 1}`;
-                          const allSets = machineList.flat();
+                      {Object.entries(session.logs).map(([exId, exerciseLogs]) => {
+                          const firstLog = exerciseLogs[0];
+                          const muscleName = firstLog?.muscleName || "Exercise";
 
                           return (
                             <div
-                              key={slotIdx}
-                              className="space-y-3 rounded-xl border border-border/10 bg-background/20 p-4"
+                              key={exId}
+                              className="space-y-4 rounded-xl border border-border/10 bg-background/20 p-4"
                             >
                               <div className="flex items-center justify-between border-b border-border/10 pb-2">
                                 <span className="max-w-[200px] truncate text-[10px] font-black tracking-wider text-primary uppercase">
                                   {muscleName}
                                 </span>
-                                <span className="text-[8px] font-bold uppercase opacity-40">{allSets.length} sets</span>
+                                <span className="text-[8px] font-bold uppercase opacity-40">{exerciseLogs.length} sets</span>
                               </div>
 
-                              {Object.entries(machineGroups).map(([mId, mLogs], gIdx) => (
-                                <div key={mId + gIdx} className="space-y-1.5">
-                                  <div className="text-[10px] font-black uppercase italic opacity-80">
-                                    {mLogs[0]?.machineName || 'Exercise'}
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                {exerciseLogs.map((s, sIdx) => (
+                                  <div
+                                    key={sIdx}
+                                    className="flex flex-col items-center rounded-lg border border-border/10 bg-background/40 p-2"
+                                  >
+                                    <span className="mb-1 text-[7px] font-black uppercase opacity-40">
+                                      {s.machineName.toUpperCase()}
+                                    </span>
+                                    <div className="flex items-center gap-1 leading-none font-black">
+                                      <span className="text-sm italic">{s.reps}</span>
+                                      <span className="text-[7px] tracking-tighter opacity-40">×</span>
+                                      <span className="text-sm text-accent-amber italic">{s.weight}</span>
+                                    </div>
                                   </div>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    {mLogs.map((s, sIdx) => (
-                                      <div
-                                        key={sIdx}
-                                        className="flex flex-col items-center rounded-lg border border-border/10 bg-background/40 p-2"
-                                      >
-                                        <span className="mb-1 text-[7px] font-black uppercase opacity-20">
-                                          Set {sIdx + 1}
-                                        </span>
-                                        <div className="flex items-center gap-1 leading-none font-black">
-                                          <span className="text-sm italic">{s.reps}</span>
-                                          <span className="text-[7px] tracking-tighter opacity-40">×</span>
-                                          <span className="text-sm text-accent-amber italic">{s.weight}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
                           );
                         })}

@@ -16,27 +16,27 @@ export interface PerformanceLog {
 export interface ActiveSessionState {
   status: SessionStatus;
   activePlanId: string | null;
-  currentSlotIndex: number;
+  currentExerciseId: string | null;
   currentSetIndex: number;
   selectedMachineId: string | null;
-  // slotIndex -> machineId -> PerformanceLog[]
-  logs: Record<number, Record<string, PerformanceLog[]>>;
-  sessionTargetSets: Record<number, number>;
+  // exerciseId -> PerformanceLog[]
+  logs: Record<string, PerformanceLog[]>;
+  sessionTargetSets: Record<string, number>;
   startTime: number | null;
   _hasHydrated: boolean;
 
   // Actions
   startSession: (
     planId: string,
-    initialMachineId: string | null,
-    initialSlotSets: { slotIndex: number; sets: number }[],
+    initialExerciseId: string | null,
+    initialExerciseSets: { exerciseId: string; sets: number }[],
   ) => void;
   updateStatus: (status: SessionStatus) => void;
-  updateSet: (slotIndex: number, setIndex: number) => void;
+  updateSet: (exerciseId: string, setIndex: number) => void;
   updateMachine: (machineId: string) => void;
-  logSet: (slotIndex: number, machineId: string, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
-  addExtraSet: (slotIndex: number) => void;
-  capSessionSets: (slotIndex: number, newCount: number) => void;
+  logSet: (exerciseId: string, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
+  addExtraSet: (exerciseId: string) => void;
+  capSessionSets: (exerciseId: string, newCount: number) => void;
   resetSession: () => void;
 }
 
@@ -45,7 +45,7 @@ export const useActiveSession = create<ActiveSessionState>()(
     (set, get) => ({
       status: 'SELECTING',
       activePlanId: null,
-      currentSlotIndex: 0,
+      currentExerciseId: null,
       currentSetIndex: 0,
       selectedMachineId: null,
       logs: {},
@@ -53,18 +53,18 @@ export const useActiveSession = create<ActiveSessionState>()(
       startTime: null,
       _hasHydrated: false,
 
-      startSession: (planId, initialMachineId, initialSlotSets) => {
-        const targetSets: Record<number, number> = {};
-        initialSlotSets.forEach((s) => {
-          targetSets[s.slotIndex] = s.sets;
+      startSession: (planId, initialExerciseId, initialExerciseSets) => {
+        const targetSets: Record<string, number> = {};
+        initialExerciseSets.forEach((s) => {
+          targetSets[s.exerciseId] = s.sets;
         });
 
         set({
           activePlanId: planId,
           status: 'EXERCISE',
-          currentSlotIndex: 0,
+          currentExerciseId: initialExerciseId,
           currentSetIndex: 0,
-          selectedMachineId: initialMachineId,
+          selectedMachineId: null,
           logs: {},
           sessionTargetSets: targetSets,
           startTime: Date.now(),
@@ -73,45 +73,42 @@ export const useActiveSession = create<ActiveSessionState>()(
 
       updateStatus: (status) => set({ status }),
 
-      updateSet: (slotIndex, setIndex) => set({ currentSlotIndex: slotIndex, currentSetIndex: setIndex }),
+      updateSet: (exerciseId, setIndex) => set({ currentExerciseId: exerciseId, currentSetIndex: setIndex }),
 
       updateMachine: (machineId) => {
         const state = get();
-        const slotLogs = state.logs[state.currentSlotIndex] || {};
-        const machineLogs = slotLogs[machineId] || [];
+        if (!state.currentExerciseId) return;
+        const exerciseLogs = state.logs[state.currentExerciseId] || [];
 
         set({
           selectedMachineId: machineId,
-          currentSetIndex: machineLogs.length,
+          currentSetIndex: exerciseLogs.length,
         });
       },
 
-      logSet: (slotIndex, machineId, setIndex, log) =>
+      logSet: (exerciseId, setIndex, log) =>
         set((state) => {
-          const slotLogs = { ...(state.logs[slotIndex] || {}) };
-          const machineLogs = [...(slotLogs[machineId] || [])];
-
-          machineLogs[setIndex] = { ...log, timestamp: Date.now() };
-          slotLogs[machineId] = machineLogs;
+          const exerciseLogs = [...(state.logs[exerciseId] || [])];
+          exerciseLogs[setIndex] = { ...log, timestamp: Date.now() };
 
           return {
-            logs: { ...state.logs, [slotIndex]: slotLogs },
+            logs: { ...state.logs, [exerciseId]: exerciseLogs },
           };
         }),
 
-      addExtraSet: (slotIndex) =>
+      addExtraSet: (exerciseId) =>
         set((state) => ({
           sessionTargetSets: {
             ...state.sessionTargetSets,
-            [slotIndex]: (state.sessionTargetSets[slotIndex] || 0) + 1,
+            [exerciseId]: (state.sessionTargetSets[exerciseId] || 0) + 1,
           },
         })),
 
-      capSessionSets: (slotIndex, newCount) =>
+      capSessionSets: (exerciseId, newCount) =>
         set((state) => ({
           sessionTargetSets: {
             ...state.sessionTargetSets,
-            [slotIndex]: newCount,
+            [exerciseId]: newCount,
           },
         })),
 
@@ -119,7 +116,7 @@ export const useActiveSession = create<ActiveSessionState>()(
         set({
           status: 'SELECTING',
           activePlanId: null,
-          currentSlotIndex: 0,
+          currentExerciseId: null,
           currentSetIndex: 0,
           selectedMachineId: null,
           logs: {},

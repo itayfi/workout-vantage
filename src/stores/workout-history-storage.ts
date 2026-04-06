@@ -17,9 +17,9 @@ export interface CompletedWorkout {
   planName: string;
   startTime: number;
   endTime: number;
-  // slotIndex -> machineId -> PerformanceLog[]
-  logs: Record<number, Record<string, PerformanceLog[]>>;
-  sessionTargetSets: Record<number, number>;
+  // exerciseId -> PerformanceLog[]
+  logs: Record<string, PerformanceLog[]>;
+  sessionTargetSets: Record<string, number>;
   totalSets: number;
   totalExercises: number;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { Route as rootRoute } from './__root';
 import { Button } from '@/components/ui/button';
@@ -20,10 +20,10 @@ const variantSchema = z.object({
   weightStep: z.number().min(0),
 });
 
-const slotSchema = z.object({
+const exerciseSchema = z.object({
   id: z.string(),
-  targetMuscle: z.string().min(2, 'Muscle required'),
-  alternatives: z.array(variantSchema),
+  musclePath: z.string().min(2, 'Muscle required'),
+  suggestedExercises: z.array(variantSchema),
   targetSets: z.number().min(1),
   targetReps: z.number().min(1),
   targetWeight: z.number().min(0).optional(),
@@ -32,7 +32,7 @@ const slotSchema = z.object({
 const planSchema = z.object({
   id: z.string(),
   name: z.string().min(2, 'Plan name required'),
-  slots: z.array(slotSchema),
+  exercises: z.array(exerciseSchema),
 });
 
 type PlanFormValues = z.infer<typeof planSchema>;
@@ -54,17 +54,17 @@ function PlanEditor() {
     defaultValues: {
       id: '',
       name: 'New Plan',
-      slots: [],
+      exercises: [],
     },
   });
 
   const {
-    fields: slots,
-    append: appendSlot,
-    remove: removeSlot,
+    fields: exercises,
+    append: appendExercise,
+    remove: removeExercise,
   } = useFieldArray({
     control: form.control,
-    name: 'slots',
+    name: 'exercises',
   });
 
   // Initialize once hydrated
@@ -77,29 +77,32 @@ function PlanEditor() {
         form.reset({
           id: Math.random().toString(36).substring(2, 11),
           name: 'New Plan',
-          slots: [],
+          exercises: [],
         });
       }
       setIsReady(true);
     }
   }, [_hasHydrated, plans, planId, form, isReady]);
 
-  const onSubmit = (data: PlanFormValues) => {
-    // eslint-disable-next-line
-    const timestamp = Date.now();
-    const fullPlan: WorkoutPlan = {
-      ...data,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const onSubmit = useCallback(
+    (data: PlanFormValues) => {
+      const existingPlan = plans.find((p) => p.id === planId);
+      const now = Date.now();
+      const fullPlan: WorkoutPlan = {
+        ...data,
+        createdAt: existingPlan?.createdAt || now,
+        updatedAt: now,
+      };
 
-    if (planId === 'new' || !plans.find((p) => p.id === planId)) {
-      addPlan(fullPlan);
-    } else {
-      updatePlan(planId, fullPlan);
-    }
-    navigate({ to: '/plans' });
-  };
+      if (planId === 'new' || !existingPlan) {
+        addPlan(fullPlan);
+      } else {
+        updatePlan(planId, fullPlan);
+      }
+      navigate({ to: '/plans' });
+    },
+    [planId, plans, addPlan, updatePlan, navigate],
+  );
 
   if (!isReady) {
     return (
@@ -138,8 +141,8 @@ function PlanEditor() {
         </div>
 
         <div className="flex flex-col gap-4">
-          {slots.map((item, index) => (
-            <MuscleSlotItem key={item.id} index={index} control={form.control} onRemove={() => removeSlot(index)} />
+          {exercises.map((item, index) => (
+            <ExerciseItem key={item.id} index={index} control={form.control} onRemove={() => removeExercise(index)} />
           ))}
 
           <Button
@@ -147,17 +150,17 @@ function PlanEditor() {
             variant="outline"
             className="flex h-20 flex-col gap-1 border-2 border-dashed bg-muted/10 transition-colors hover:bg-muted/20"
             onClick={() =>
-              appendSlot({
+              appendExercise({
                 id: Math.random().toString(36).substring(2, 11),
-                targetMuscle: 'Muscle Group',
-                alternatives: [],
+                musclePath: 'Muscle Group',
+                suggestedExercises: [],
                 targetSets: 3,
                 targetReps: 12,
               })
             }
           >
             <Plus className="h-5 w-5 text-primary" />
-            <span className="font-bold">Add Muscle Group Slot</span>
+            <span className="font-bold">Add Planned Exercise</span>
           </Button>
         </div>
 
@@ -174,7 +177,7 @@ function PlanEditor() {
   );
 }
 
-function MuscleSlotItem({
+function ExerciseItem({
   index,
   control,
   onRemove,
@@ -189,7 +192,7 @@ function MuscleSlotItem({
     remove: removeMachine,
   } = useFieldArray({
     control,
-    name: `slots.${index}.alternatives` as const,
+    name: `exercises.${index}.suggestedExercises` as const,
   });
 
   const machines = fields as unknown as (ExerciseVariant & { id: string })[];
@@ -210,12 +213,13 @@ function MuscleSlotItem({
           </div>
           <FormField
             control={control}
-            name={`slots.${index}.targetMuscle`}
+            name={`exercises.${index}.musclePath`}
             render={({ field }) => (
               <FormItem>
                 <FormControl>
                   <Input
                     className="h-8 max-w-[200px] border-none bg-transparent px-2 font-bold focus-visible:ring-0"
+                    placeholder="e.g. Legs/Quads"
                     {...field}
                   />
                 </FormControl>
@@ -237,7 +241,7 @@ function MuscleSlotItem({
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={control}
-            name={`slots.${index}.targetSets`}
+            name={`exercises.${index}.targetSets`}
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
                 <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
@@ -251,7 +255,7 @@ function MuscleSlotItem({
           />
           <FormField
             control={control}
-            name={`slots.${index}.targetReps`}
+            name={`exercises.${index}.targetReps`}
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
                 <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
@@ -265,7 +269,7 @@ function MuscleSlotItem({
           />
           <FormField
             control={control}
-            name={`slots.${index}.targetWeight`}
+            name={`exercises.${index}.targetWeight`}
             render={({ field }) => (
               <FormItem className="col-span-2 flex flex-col gap-1">
                 <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
@@ -288,7 +292,7 @@ function MuscleSlotItem({
 
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
-            Machines / Exercises
+            Suggested Machines / Variants
           </label>
           {machines.map((alt, altIndex) => (
             <div
@@ -314,12 +318,12 @@ function MuscleSlotItem({
             <DialogTrigger asChild>
               <Button type="button" variant="outline" size="sm" className="w-full border-dashed">
                 <Plus className="mr-2 h-3 w-3" />
-                Add Machine
+                Add Suggested Exercise
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Exercise/Machine</DialogTitle>
+                <DialogTitle>Add Suggested Machine/Variant</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
@@ -376,7 +380,7 @@ function MuscleSlotItem({
                     }
                   }}
                 >
-                  Add to Slot
+                  Add to Suggestions
                 </Button>
               </DialogFooter>
             </DialogContent>

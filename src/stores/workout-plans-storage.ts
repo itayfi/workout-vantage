@@ -10,10 +10,10 @@ export type ExerciseVariant = {
   videoLink?: string;
 };
 
-export type MuscleGroupSlot = {
+export type PlannedExercise = {
   id: string;
-  targetMuscle: string;
-  alternatives: ExerciseVariant[]; // 2-3 alternative exercises
+  musclePath: string; // e.g. "Legs/Quads"
+  suggestedExercises: ExerciseVariant[]; // 2-3 machine/variant suggestions
   targetSets: number;
   targetReps: number;
   targetWeight?: number;
@@ -23,7 +23,7 @@ export type MuscleGroupSlot = {
 export type WorkoutPlan = {
   id: string;
   name: string;
-  slots: MuscleGroupSlot[]; // ordered slots
+  exercises: PlannedExercise[]; // ordered list of exercise goals
   createdAt: number;
   updatedAt: number;
 };

@@ -59,7 +59,7 @@ function Plans() {
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 py-4">
                   <div>
                     <CardTitle className="text-lg">{plan.name}</CardTitle>
-                    <CardDescription>{plan.slots.length} muscle slots</CardDescription>
+                    <CardDescription>{plan.exercises.length} Exercises</CardDescription>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </CardHeader>

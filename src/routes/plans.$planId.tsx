@@ -1,29 +1,23 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { Route as rootRoute } from './__root';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { useWorkoutPlans, type WorkoutPlan, type ExerciseVariant } from '@/stores/workout-plans-storage';
+import { useWorkoutPlans, type WorkoutPlan } from '@/stores/workout-plans-storage';
 import { Plus, Trash2, ArrowLeft, Save, Loader2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm, useFieldArray, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
-const variantSchema = z.object({
-  id: z.string(),
-  name: z.string().min(2, 'Name too short'),
-  machineType: z.string(),
-  weightStep: z.number().min(0),
-});
-
 const exerciseSchema = z.object({
   id: z.string(),
+  name: z.string().min(2, 'Name required'),
+  machineType: z.string().min(1, 'Type required'),
   musclePath: z.string().min(2, 'Muscle required'),
-  suggestedExercises: z.array(variantSchema),
+  weightStep: z.number().min(0),
   targetSets: z.number().min(1),
   targetReps: z.number().min(1),
   targetWeight: z.number().min(0).optional(),
@@ -67,9 +61,11 @@ function PlanEditor() {
     name: 'exercises',
   });
 
+  const initializedRef = useRef(false);
+
   // Initialize once hydrated
   useEffect(() => {
-    if (_hasHydrated && !isReady) {
+    if (_hasHydrated && !initializedRef.current) {
       const existingPlan = plans.find((p) => p.id === planId);
       if (existingPlan) {
         form.reset(existingPlan);
@@ -80,9 +76,11 @@ function PlanEditor() {
           exercises: [],
         });
       }
-      setIsReady(true);
+      initializedRef.current = true;
+      // Use setTimeout to avoid synchronous setState inside useEffect warning
+      setTimeout(() => setIsReady(true), 0);
     }
-  }, [_hasHydrated, plans, planId, form, isReady]);
+  }, [_hasHydrated, plans, planId, form]);
 
   const onSubmit = useCallback(
     (data: PlanFormValues) => {
@@ -152,8 +150,10 @@ function PlanEditor() {
             onClick={() =>
               appendExercise({
                 id: Math.random().toString(36).substring(2, 11),
+                name: 'New Exercise',
+                machineType: 'Machine',
                 musclePath: 'Muscle Group',
-                suggestedExercises: [],
+                weightStep: 2.5,
                 targetSets: 3,
                 targetReps: 12,
               })
@@ -186,24 +186,6 @@ function ExerciseItem({
   control: Control<PlanFormValues>;
   onRemove: () => void;
 }) {
-  const {
-    fields,
-    append: appendMachine,
-    remove: removeMachine,
-  } = useFieldArray({
-    control,
-    name: `exercises.${index}.suggestedExercises` as const,
-  });
-
-  const machines = fields as unknown as (ExerciseVariant & { id: string })[];
-
-  const [isAddingMachine, setIsAddingMachine] = useState(false);
-  const [newMachine, setNewMachine] = useState<Partial<ExerciseVariant>>({
-    name: '',
-    machineType: 'Machine',
-    weightStep: 2.5,
-  });
-
   return (
     <Card className="group relative overflow-hidden border-2 border-primary/10 pt-0">
       <div className="flex items-center justify-between border-b border-border/50 bg-muted/40 px-4 py-3">
@@ -213,13 +195,13 @@ function ExerciseItem({
           </div>
           <FormField
             control={control}
-            name={`exercises.${index}.musclePath`}
+            name={`exercises.${index}.name`}
             render={({ field }) => (
               <FormItem>
                 <FormControl>
                   <Input
-                    className="h-8 max-w-[200px] border-none bg-transparent px-2 font-bold focus-visible:ring-0"
-                    placeholder="e.g. Legs/Quads"
+                    className="h-8 max-w-[200px] border-none bg-transparent px-2 font-black focus-visible:ring-0"
+                    placeholder="Exercise Name"
                     {...field}
                   />
                 </FormControl>
@@ -241,6 +223,60 @@ function ExerciseItem({
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={control}
+            name={`exercises.${index}.musclePath`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col gap-1">
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Muscle Path
+                </FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g. Legs/Quads" {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`exercises.${index}.machineType`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col gap-1">
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Tool Type
+                </FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Barbell">Barbell</SelectItem>
+                    <SelectItem value="Dumbbell">Dumbbell</SelectItem>
+                    <SelectItem value="Machine">Machine</SelectItem>
+                    <SelectItem value="Cable">Cable</SelectItem>
+                    <SelectItem value="Bodyweight">Bodyweight</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`exercises.${index}.weightStep`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col gap-1">
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Weight Step (kg)
+                </FormLabel>
+                <FormControl>
+                  <Input type="number" step="0.5" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={control}
             name={`exercises.${index}.targetSets`}
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
@@ -259,7 +295,7 @@ function ExerciseItem({
             render={({ field }) => (
               <FormItem className="flex flex-col gap-1">
                 <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
-                  Target Reps
+                  Reps
                 </FormLabel>
                 <FormControl>
                   <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value))} />
@@ -271,15 +307,15 @@ function ExerciseItem({
             control={control}
             name={`exercises.${index}.targetWeight`}
             render={({ field }) => (
-              <FormItem className="col-span-2 flex flex-col gap-1">
+              <FormItem className="flex flex-col gap-1">
                 <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
-                  Target Weight (kg - Optional)
+                  Weight (opt)
                 </FormLabel>
                 <FormControl>
                   <Input
                     type="number"
                     step="0.5"
-                    placeholder="e.g. 20"
+                    placeholder="20"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
@@ -288,103 +324,6 @@ function ExerciseItem({
               </FormItem>
             )}
           />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
-            Suggested Machines / Variants
-          </label>
-          {machines.map((alt, altIndex) => (
-            <div
-              key={alt.id}
-              className="group/machine flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 p-2"
-            >
-              <div className="flex-1 text-sm font-medium">
-                {alt.name} <span className="ml-2 text-[10px] opacity-70">({alt.weightStep}kg)</span>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 opacity-0 transition-opacity group-hover/machine:opacity-30 hover:opacity-100!"
-                onClick={() => removeMachine(altIndex)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
-
-          <Dialog open={isAddingMachine} onOpenChange={setIsAddingMachine}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="w-full border-dashed">
-                <Plus className="mr-2 h-3 w-3" />
-                Add Suggested Exercise
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Suggested Machine/Variant</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium">Name</label>
-                  <Input
-                    placeholder="e.g. Bench Press"
-                    value={newMachine.name}
-                    onChange={(e) => setNewMachine({ ...newMachine, name: e.target.value })}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium">Type</label>
-                    <Select
-                      value={newMachine.machineType}
-                      onValueChange={(val) => setNewMachine({ ...newMachine, machineType: val })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Barbell">Barbell</SelectItem>
-                        <SelectItem value="Dumbbell">Dumbbell</SelectItem>
-                        <SelectItem value="Machine">Machine</SelectItem>
-                        <SelectItem value="Cable">Cable</SelectItem>
-                        <SelectItem value="Bodyweight">Bodyweight</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium">Weight Step (kg)</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={newMachine.weightStep}
-                      onChange={(e) => setNewMachine({ ...newMachine, weightStep: parseFloat(e.target.value) })}
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    if (newMachine.name) {
-                      appendMachine({
-                        id: Math.random().toString(36).substring(2, 11),
-                        name: newMachine.name,
-                        machineType: newMachine.machineType || 'Machine',
-                        weightStep: newMachine.weightStep || 2.5,
-                      });
-                      setNewMachine({ name: '', machineType: 'Machine', weightStep: 2.5 });
-                      setIsAddingMachine(false);
-                    }
-                  }}
-                >
-                  Add to Suggestions
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </CardContent>
     </Card>

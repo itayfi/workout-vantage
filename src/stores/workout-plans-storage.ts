@@ -2,28 +2,22 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import localforage from 'localforage';
 
-export type ExerciseVariant = {
-  id: string;
-  name: string;
-  machineType: string;
-  weightStep: number; // e.g. 2.5 or 5
-  videoLink?: string;
-};
-
 export type PlannedExercise = {
   id: string;
+  name: string;
+  machineType: string; // e.g. "Machine", "Dumbbell"
   musclePath: string; // e.g. "Legs/Quads"
-  suggestedExercises: ExerciseVariant[]; // 2-3 machine/variant suggestions
+  weightStep: number; // e.g. 2.5 or 5
   targetSets: number;
   targetReps: number;
   targetWeight?: number;
-  isSuperset?: boolean;
+  videoLink?: string;
 };
 
 export type WorkoutPlan = {
   id: string;
   name: string;
-  exercises: PlannedExercise[]; // ordered list of exercise goals
+  exercises: PlannedExercise[];
   createdAt: number;
   updatedAt: number;
 };

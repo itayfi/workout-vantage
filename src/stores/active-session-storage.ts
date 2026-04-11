@@ -16,9 +16,9 @@ export interface PerformanceLog {
 export interface ActiveSessionState {
   status: SessionStatus;
   activePlanId: string | null;
-  currentExerciseId: string | null;
+  currentExerciseIds: string[]; // 1 for single, 2 for superset
+  activeExerciseIndex: number; // 0 or 1, tracks which of currentExerciseIds is active
   currentSetIndex: number;
-  selectedMachineId: string | null;
   // exerciseId -> PerformanceLog[]
   logs: Record<string, PerformanceLog[]>;
   sessionTargetSets: Record<string, number>;
@@ -28,32 +28,31 @@ export interface ActiveSessionState {
   // Actions
   startSession: (
     planId: string,
-    initialExerciseId: string | null,
+    initialExerciseIds: string[],
     initialExerciseSets: { exerciseId: string; sets: number }[],
   ) => void;
   updateStatus: (status: SessionStatus) => void;
-  updateSet: (exerciseId: string, setIndex: number) => void;
-  updateMachine: (machineId: string) => void;
+  updateSet: (exerciseIds: string[], setIndex: number) => void;
+  setActiveExerciseIndex: (index: number) => void;
   logSet: (exerciseId: string, setIndex: number, log: Omit<PerformanceLog, 'timestamp'>) => void;
   addExtraSet: (exerciseId: string) => void;
-  capSessionSets: (exerciseId: string, newCount: number) => void;
   resetSession: () => void;
 }
 
 export const useActiveSession = create<ActiveSessionState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       status: 'SELECTING',
       activePlanId: null,
-      currentExerciseId: null,
+      currentExerciseIds: [],
+      activeExerciseIndex: 0,
       currentSetIndex: 0,
-      selectedMachineId: null,
       logs: {},
       sessionTargetSets: {},
       startTime: null,
       _hasHydrated: false,
 
-      startSession: (planId, initialExerciseId, initialExerciseSets) => {
+      startSession: (planId, initialExerciseIds, initialExerciseSets) => {
         const targetSets: Record<string, number> = {};
         initialExerciseSets.forEach((s) => {
           targetSets[s.exerciseId] = s.sets;
@@ -62,9 +61,9 @@ export const useActiveSession = create<ActiveSessionState>()(
         set({
           activePlanId: planId,
           status: 'EXERCISE',
-          currentExerciseId: initialExerciseId,
+          currentExerciseIds: initialExerciseIds,
+          activeExerciseIndex: 0,
           currentSetIndex: 0,
-          selectedMachineId: null,
           logs: {},
           sessionTargetSets: targetSets,
           startTime: Date.now(),
@@ -73,18 +72,14 @@ export const useActiveSession = create<ActiveSessionState>()(
 
       updateStatus: (status) => set({ status }),
 
-      updateSet: (exerciseId, setIndex) => set({ currentExerciseId: exerciseId, currentSetIndex: setIndex }),
-
-      updateMachine: (machineId) => {
-        const state = get();
-        if (!state.currentExerciseId) return;
-        const exerciseLogs = state.logs[state.currentExerciseId] || [];
-
+      updateSet: (exerciseIds, setIndex) =>
         set({
-          selectedMachineId: machineId,
-          currentSetIndex: exerciseLogs.length,
-        });
-      },
+          currentExerciseIds: exerciseIds,
+          currentSetIndex: setIndex,
+          activeExerciseIndex: 0,
+        }),
+
+      setActiveExerciseIndex: (index) => set({ activeExerciseIndex: index }),
 
       logSet: (exerciseId, setIndex, log) =>
         set((state) => {
@@ -104,21 +99,13 @@ export const useActiveSession = create<ActiveSessionState>()(
           },
         })),
 
-      capSessionSets: (exerciseId, newCount) =>
-        set((state) => ({
-          sessionTargetSets: {
-            ...state.sessionTargetSets,
-            [exerciseId]: newCount,
-          },
-        })),
-
       resetSession: () =>
         set({
           status: 'SELECTING',
           activePlanId: null,
-          currentExerciseId: null,
+          currentExerciseIds: [],
+          activeExerciseIndex: 0,
           currentSetIndex: 0,
-          selectedMachineId: null,
           logs: {},
           sessionTargetSets: {},
           startTime: null,

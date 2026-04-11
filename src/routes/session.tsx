@@ -4,7 +4,6 @@ import { Route as rootRoute } from './__root';
 import {
   useWorkoutPlans,
   type PlannedExercise,
-  type ExerciseVariant,
 } from '@/stores/workout-plans-storage';
 import { useActiveSession } from '@/stores/active-session-storage';
 import { useWorkoutHistory } from '@/stores/workout-history-storage';
@@ -57,9 +56,8 @@ function Session() {
   const {
     status,
     activePlanId,
-    currentExerciseId,
-    currentSetIndex,
-    selectedMachineId,
+    currentExerciseIds,
+    activeExerciseIndex,
     logs,
     sessionTargetSets,
     startTime,
@@ -67,10 +65,9 @@ function Session() {
     startSession,
     updateStatus,
     updateSet,
-    updateMachine,
+    setActiveExerciseIndex,
     logSet,
     addExtraSet,
-    capSessionSets,
     resetSession,
   } = useActiveSession();
   const { addWorkout } = useWorkoutHistory();
@@ -81,12 +78,14 @@ function Session() {
   const [isTimerRunning, setIsTimerRunning] = React.useState(false);
   const [isSelectionDrawerOpen, setIsSelectionDrawerOpen] = React.useState(false);
   const [isBreakdownOpen, setIsBreakdownOpen] = React.useState(false);
+  const [selectedForSuperset, setSelectedForSuperset] = React.useState<string[]>([]);
 
   const activePlan = plans.find((p) => p.id === activePlanId);
-  const currentExercise = activePlan?.exercises.find((e) => e.id === currentExerciseId);
-  const selectedMachine = currentExercise?.suggestedExercises.find((a) => a.id === selectedMachineId);
+  
+  const currentExId = currentExerciseIds[activeExerciseIndex];
+  const currentExercise = activePlan?.exercises.find((e) => e.id === currentExId);
 
-  // Grouping logic for the selection UI
+  // Grouping logic for the selection UI (now just by top level muscle for better browsing)
   const groupedExercises = React.useMemo(() => {
     if (!activePlan) return {};
     const groups: Record<string, typeof activePlan.exercises> = {};
@@ -98,30 +97,28 @@ function Session() {
     return groups;
   }, [activePlan]);
 
-  // Total sets done in THIS exercise goal across ALL machines
-  const exerciseTotalDoneCount = React.useMemo(() => {
-    if (!currentExerciseId) return 0;
-    return (logs[currentExerciseId] || []).length;
-  }, [logs, currentExerciseId]);
+  const getExerciseDoneCount = React.useCallback((exId: string) => {
+    return (logs[exId] || []).length;
+  }, [logs]);
 
-  // Current target for THIS exercise
-  const currentTargetSetsCount = (currentExerciseId ? sessionTargetSets[currentExerciseId] : 0) || currentExercise?.targetSets || 0;
+  const getExerciseTargetSets = React.useCallback((exId: string) => {
+    const planEx = activePlan?.exercises.find((e) => e.id === exId);
+    return sessionTargetSets[exId] || planEx?.targetSets || 0;
+  }, [activePlan, sessionTargetSets]);
 
   const isExerciseDone = React.useCallback(
     (exId: string) => {
-      const exLogs = logs[exId] || [];
-      const planEx = activePlan?.exercises.find((e) => e.id === exId);
-      const target = sessionTargetSets[exId] || planEx?.targetSets || 0;
-      return exLogs.length >= target && target > 0;
+      const done = getExerciseDoneCount(exId);
+      const target = getExerciseTargetSets(exId);
+      return done >= target && target > 0;
     },
-    [logs, sessionTargetSets, activePlan],
+    [getExerciseDoneCount, getExerciseTargetSets],
   );
 
   const finalizeWorkout = React.useCallback(() => {
     if (!activePlan) return;
 
-    const flatLogs = Object.values(logs).flat();
-    const totalSets = flatLogs.length;
+    const totalSets = Object.values(logs).flat().length;
     const totalExercises = Object.keys(logs).length;
 
     addWorkout({
@@ -138,68 +135,41 @@ function Session() {
     updateStatus('SUMMARY');
   }, [activePlan, logs, sessionTargetSets, startTime, addWorkout, updateStatus]);
 
-  const selectExercise = React.useCallback(
-    (exId: string) => {
-      // Logic for switching machines/goals
-      if (exId === currentExerciseId) {
-        // Switching machines within the SAME goal
-        const currentProgress = (logs[exId] || []).length;
-        const planEx = activePlan?.exercises.find(e => e.id === exId);
-        const baseTarget = planEx?.targetSets || 0;
-        const currentTarget = sessionTargetSets[exId] || baseTarget;
-
-        // If we switch machines and we've already done some sets, 
-        // we likely want to do a full set count for the NEW machine.
-        if (currentProgress > 0 && currentProgress >= currentTarget) {
-          addExtraSet(exId);
-        }
-      } else if (currentExerciseId) {
-        // Switching to a COMPLETELY DIFFERENT goal
-        const currentProgress = (logs[currentExerciseId] || []).length;
-        const currentPlanEx = activePlan?.exercises.find(e => e.id === currentExerciseId);
-        const currentTarget = sessionTargetSets[currentExerciseId] || currentPlanEx?.targetSets || 0;
-
-        if (currentProgress > 0 && currentProgress < currentTarget) {
-          capSessionSets(currentExerciseId, currentProgress);
-        }
-      }
-
-      updateSet(exId, (logs[exId] || []).length);
+  const selectExercises = React.useCallback(
+    (exIds: string[]) => {
+      const progress = exIds.map(id => getExerciseDoneCount(id));
+      const minProgress = Math.min(...progress);
+      
+      updateSet(exIds, minProgress);
+      updateStatus('EXERCISE');
+      setIsSelectionDrawerOpen(false);
+      setSelectedForSuperset([]);
     },
-    [currentExerciseId, logs, sessionTargetSets, activePlan, capSessionSets, updateSet, addExtraSet],
+    [getExerciseDoneCount, updateSet, updateStatus],
   );
 
   const handleNextStep = React.useCallback(() => {
-    if (!currentExerciseId) return;
-
-    if (exerciseTotalDoneCount < currentTargetSetsCount) {
-      updateSet(currentExerciseId, exerciseTotalDoneCount);
-      updateStatus('EXERCISE');
-    } else {
+    const allDone = currentExerciseIds.every(id => isExerciseDone(id));
+    
+    if (allDone) {
       updateStatus('CHOOSING_NEXT');
+    } else {
+      const progress = currentExerciseIds.map(id => getExerciseDoneCount(id));
+      const minProgress = Math.min(...progress);
+      updateSet(currentExerciseIds, minProgress);
+      updateStatus('EXERCISE');
     }
+    
     setIsTimerRunning(false);
     setTimer(0);
-  }, [
-    currentExerciseId,
-    exerciseTotalDoneCount,
-    currentTargetSetsCount,
-    updateSet,
-    updateStatus,
-  ]);
+  }, [currentExerciseIds, isExerciseDone, getExerciseDoneCount, updateSet, updateStatus]);
 
   React.useEffect(() => {
-    if (currentExercise) {
+    if (status === 'EXERCISE' && currentExercise) {
       setActualReps(currentExercise.targetReps);
       setActualWeight(currentExercise.targetWeight ?? 20);
     }
-  }, [currentExerciseId, currentSetIndex, currentExercise]);
-
-  React.useEffect(() => {
-    if (status === 'EXERCISE' && activePlan && !selectedMachineId && !isSelectionDrawerOpen) {
-      setIsSelectionDrawerOpen(true);
-    }
-  }, [status, activePlan, selectedMachineId, isSelectionDrawerOpen]);
+  }, [currentExId, currentExercise, status]);
 
   React.useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -228,35 +198,35 @@ function Session() {
   const handleStartSession = (planId: string) => {
     const plan = plans.find((p) => p.id === planId);
     if (plan) {
-      const initialExercises = plan.exercises.map((s) => ({ exerciseId: s.id, sets: s.targetSets }));
-      startSession(planId, null, initialExercises);
+      const initialExerciseSets = plan.exercises.map((s) => ({ exerciseId: s.id, sets: s.targetSets }));
+      startSession(planId, [plan.exercises[0].id], initialExerciseSets);
     }
   };
 
   const handleCompleteSet = () => {
-    if (!selectedMachine || !currentExerciseId) return;
-    logSet(currentExerciseId, exerciseTotalDoneCount, {
+    if (!currentExercise || !currentExId) return;
+    
+    logSet(currentExId, getExerciseDoneCount(currentExId), {
       reps: actualReps,
       weight: actualWeight,
-      machineId: selectedMachine.id,
-      machineName: selectedMachine.name,
-      muscleName: currentExercise?.musclePath || "Unknown",
+      machineId: currentExId,
+      machineName: currentExercise.name,
+      muscleName: currentExercise.musclePath,
     });
-    setTimer(60);
-    setIsTimerRunning(true);
-    updateStatus('RESTING');
+
+    const isSuperset = currentExerciseIds.length > 1;
+    const isLastInCycle = activeExerciseIndex === currentExerciseIds.length - 1;
+
+    if (isSuperset && !isLastInCycle) {
+      setActiveExerciseIndex(activeExerciseIndex + 1);
+    } else {
+      setTimer(60);
+      setIsTimerRunning(true);
+      updateStatus('RESTING');
+    }
   };
 
   const skipToNextExercise = () => {
-    if (!currentExerciseId) return;
-    const currentProgress = (logs[currentExerciseId] || []).length;
-    const currentPlanEx = activePlan?.exercises.find(e => e.id === currentExerciseId);
-    const currentTarget = sessionTargetSets[currentExerciseId] || currentPlanEx?.targetSets || 0;
-
-    if (currentProgress > 0 && currentProgress < currentTarget) {
-      capSessionSets(currentExerciseId, currentProgress);
-    }
-
     updateStatus('CHOOSING_NEXT');
     setIsTimerRunning(false);
     setTimer(0);
@@ -396,79 +366,95 @@ function Session() {
       <div className="flex animate-in flex-col gap-8 pb-32 duration-500 fade-in slide-in-from-right-8">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-black tracking-widest text-primary uppercase">{activePlan?.name}</span>
-          <h1 className="text-4xl font-black italic">CHOOSE NEXT STEP</h1>
+          <h1 className="text-4xl font-black italic">CHOOSE NEXT</h1>
         </div>
 
         <div className="flex flex-col gap-8">
             {Object.entries(groupedExercises).map(([group, exercises]) => {
-                const remaining = exercises.filter(ex => !isExerciseDone(ex.id));
-                const completed = exercises.filter(ex => isExerciseDone(ex.id));
-
-                if (remaining.length === 0 && completed.length === 0) return null;
-
                 return (
                     <div key={group} className="flex flex-col gap-3">
                         <span className="px-1 text-[10px] font-black tracking-[0.2em] text-primary uppercase">{group}</span>
                         <div className="grid gap-3">
-                            {remaining.map(ex => (
-                                <Card
-                                    key={ex.id}
-                                    className="cursor-pointer border-none bg-muted/40 transition-all hover:bg-muted/60"
-                                    onClick={() => {
-                                        selectExercise(ex.id);
-                                        updateStatus('EXERCISE');
-                                    }}
-                                >
-                                    <CardContent className="flex items-center justify-between p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background text-primary shadow-sm">
-                                                <LayoutGrid className="h-5 w-5" />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="font-black tracking-tight uppercase italic">{ex.musclePath}</span>
-                                                <span className="text-[10px] font-bold uppercase opacity-60">
-                                                    Goal: {ex.targetSets} sets • {ex.targetReps} reps
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <ChevronRight className="h-5 w-5 text-primary" />
-                                    </CardContent>
-                                </Card>
-                            ))}
-                            {completed.map(ex => (
-                                <Card
-                                    key={ex.id}
-                                    className="cursor-pointer border-none bg-muted/20 opacity-60 transition-all hover:opacity-100"
-                                    onClick={() => {
-                                        selectExercise(ex.id);
-                                        updateStatus('EXERCISE');
-                                    }}
-                                >
-                                    <CardContent className="flex items-center justify-between p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background text-muted-foreground shadow-sm">
-                                                <Check className="h-5 w-5" />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-black italic">{ex.musclePath}</span>
-                                            </div>
-                                        </div>
-                                        <RotateCcw className="h-4 w-4 opacity-40" />
-                                    </CardContent>
-                                </Card>
-                            ))}
+                            {exercises.map(ex => {
+                                const done = isExerciseDone(ex.id);
+                                const isSelected = selectedForSuperset.includes(ex.id);
+                                return (
+                                    <div key={ex.id} className="flex flex-col gap-2">
+                                        <Card
+                                            className={cn(
+                                                "cursor-pointer border-2 transition-all",
+                                                isSelected ? "border-primary bg-primary/10" : "border-transparent bg-muted/40",
+                                                done && !isSelected && "opacity-60"
+                                            )}
+                                            onClick={() => {
+                                                if (isSelected) {
+                                                    setSelectedForSuperset(s => s.filter(id => id !== ex.id));
+                                                } else if (selectedForSuperset.length < 2) {
+                                                    setSelectedForSuperset(s => [...s, ex.id]);
+                                                }
+                                            }}
+                                        >
+                                            <CardContent className="flex items-center justify-between p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={cn(
+                                                        "flex h-10 w-10 items-center justify-center rounded-lg shadow-sm",
+                                                        done ? "bg-primary text-primary-foreground" : "bg-background text-primary"
+                                                    )}>
+                                                        {done ? <Check className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-black tracking-tight uppercase italic">{ex.name}</span>
+                                                        <span className="text-[10px] font-bold uppercase opacity-60">
+                                                            {getExerciseDoneCount(ex.id)} / {getExerciseTargetSets(ex.id)} sets • {ex.machineType}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-[10px] font-black uppercase opacity-40 hover:opacity-100"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            addExtraSet(ex.id);
+                                                        }}
+                                                    >
+                                                        +1 Set
+                                                    </Button>
+                                                    {isSelected && <Check className="h-5 w-5 text-primary" />}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 );
             })}
 
-          <Button
-            variant="ghost"
-            className="mt-4 h-20 w-full border-2 border-dashed border-border/50 text-lg font-black text-muted-foreground italic"
-            onClick={finalizeWorkout}
-          >
-            FINISH WORKOUT
-          </Button>
+          <div className="fixed right-0 bottom-24 left-0 z-50 p-4 backdrop-blur-md">
+            <div className="mx-auto flex max-w-lg gap-3">
+                <Button
+                    size="lg"
+                    className="h-16 flex-1 text-xl font-black italic shadow-2xl"
+                    disabled={selectedForSuperset.length === 0}
+                    onClick={() => selectExercises(selectedForSuperset)}
+                >
+                    {selectedForSuperset.length === 2 ? "START SUPERSET" : "START EXERCISE"}
+                </Button>
+                {selectedForSuperset.length === 0 && (
+                    <Button
+                        variant="ghost"
+                        size="lg"
+                        className="h-16 px-6 font-black text-muted-foreground italic"
+                        onClick={finalizeWorkout}
+                    >
+                        FINISH
+                    </Button>
+                )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -476,55 +462,38 @@ function Session() {
 
   const chartData = [{ time: timer, fill: 'var(--color-time)' }];
 
-  const renderExerciseSelectionGroup = (ex: PlannedExercise) => (
-    <div key={ex.id} className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-1">
-        <span
-          className={cn(
-            'text-[10px] leading-none font-black tracking-widest uppercase',
-            currentExerciseId === ex.id ? 'text-accent-amber' : 'text-primary',
-          )}
-        >
-          {currentExerciseId === ex.id ? 'ACTIVE TARGET' : ex.musclePath}
-        </span>
-        {isExerciseDone(ex.id) && <Check className="h-3 w-3 text-primary" />}
-      </div>
-      <div className="grid gap-2">
-        {ex.suggestedExercises.map((alt: ExerciseVariant) => (
-          <Card
-            key={alt.id}
+  const renderExerciseSelectionGroup = (ex: PlannedExercise) => {
+    const isSelected = currentExerciseIds.includes(ex.id);
+    return (
+        <Card
+            key={ex.id}
             className={cn(
-              'relative cursor-pointer overflow-hidden border-2 shadow-none transition-all active:scale-[0.98]',
-              selectedMachineId === alt.id && currentExerciseId === ex.id
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-transparent bg-muted/30',
+                'relative cursor-pointer overflow-hidden border-2 shadow-none transition-all active:scale-[0.98]',
+                isSelected
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-transparent bg-muted/30',
             )}
             onClick={() => {
-              selectExercise(ex.id);
-              updateMachine(alt.id);
-              updateStatus('EXERCISE');
-              setIsSelectionDrawerOpen(false);
+                selectExercises([ex.id]);
             }}
-          >
+        >
             <CardContent className="relative z-10 flex items-center justify-between p-4">
-              <div className="flex flex-col">
-                <span className="text-lg font-black tracking-tight italic">{alt.name}</span>
-                <span className="text-[10px] font-bold tracking-tighter uppercase opacity-60">{alt.machineType}</span>
-              </div>
-              <ChevronRight
-                className={cn(
-                  'h-4 w-4',
-                  selectedMachineId === alt.id && currentExerciseId === ex.id
-                    ? 'text-primary-foreground'
-                    : 'text-primary',
-                )}
-              />
+                <div className="flex flex-col">
+                    <span className="text-lg font-black tracking-tight italic">{ex.name}</span>
+                    <span className="text-[10px] font-bold tracking-tighter uppercase opacity-60">
+                        {ex.machineType} • {ex.musclePath}
+                    </span>
+                </div>
+                <ChevronRight
+                    className={cn(
+                        'h-4 w-4',
+                        isSelected ? 'text-primary-foreground' : 'text-primary',
+                    )}
+                />
             </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+        </Card>
+    );
+  };
 
   return (
     <div className="flex animate-in flex-col gap-6 pb-40 duration-500 slide-in-from-right-5 fade-in">
@@ -534,11 +503,17 @@ function Session() {
             <span className="text-[10px] font-black tracking-widest text-primary uppercase opacity-80">
               {activePlan?.name}
             </span>
+            {currentExerciseIds.length > 1 && (
+                <>
+                    <span className="h-1 w-1 rounded-full bg-primary/30" />
+                    <span className="text-[10px] font-black text-accent-amber uppercase">SUPERSET</span>
+                </>
+            )}
             <span className="h-1 w-1 rounded-full bg-primary/30" />
             <span className="text-[10px] font-black uppercase opacity-40">{status}</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight italic">
-            {selectedMachine?.name || currentExercise?.musclePath}
+            {currentExercise?.name || "Exercise"}
           </h1>
           <span className="text-[10px] font-bold tracking-widest text-primary/40 uppercase">
             {currentExercise?.musclePath}
@@ -570,20 +545,38 @@ function Session() {
 
       {status === 'EXERCISE' ? (
         <div className="flex animate-in flex-col gap-6 duration-500 slide-in-from-right-8">
+            {currentExerciseIds.length > 1 && (
+                <div className="flex gap-2 p-1">
+                    {currentExerciseIds.map((id, idx) => {
+                        const ex = activePlan?.exercises.find(e => e.id === id);
+                        const active = activeExerciseIndex === idx;
+                        return (
+                            <div 
+                                key={id} 
+                                className={cn(
+                                    "flex-1 rounded-lg px-3 py-2 border-2 transition-all cursor-pointer",
+                                    active ? "border-primary bg-primary/10" : "border-muted-foreground/10 bg-muted/20 opacity-40"
+                                )}
+                                onClick={() => setActiveExerciseIndex(idx)}
+                            >
+                                <span className={cn("text-[8px] font-black uppercase tracking-tighter block mb-0.5", active ? "text-primary" : "text-muted-foreground")}>
+                                    Part {idx + 1}
+                                </span>
+                                <span className="text-[10px] font-black truncate block uppercase">{ex?.name}</span>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
           <Card className="overflow-hidden border border-none border-border/30 bg-muted/40 shadow-none">
             <CardContent className="flex flex-col gap-6 p-6">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  {selectedMachine ? (
-                    <>
-                      <span className="text-2xl leading-none font-black italic">{selectedMachine.name}</span>
-                      <span className="mt-1 text-[10px] font-bold tracking-widest uppercase opacity-40">
-                        {selectedMachine.machineType} • {selectedMachine.weightStep}kg step
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-2xl leading-none font-black italic opacity-40">Select Machine...</span>
-                  )}
+                    <span className="text-2xl leading-none font-black italic">{currentExercise?.name}</span>
+                    <span className="mt-1 text-[10px] font-bold tracking-widest uppercase opacity-40">
+                    {currentExercise?.machineType} • {currentExercise?.weightStep}kg step
+                    </span>
                 </div>
                 <Button
                   type="button"
@@ -592,7 +585,7 @@ function Session() {
                   className="h-8 bg-background/50 text-[10px] font-black tracking-widest uppercase"
                   onClick={() => setIsSelectionDrawerOpen(true)}
                 >
-                  Change
+                  Switch
                 </Button>
               </div>
 
@@ -600,8 +593,8 @@ function Session() {
                 <div className="flex flex-col gap-1 rounded-2xl border border-border/50 bg-muted/60 p-4">
                   <span className="text-[10px] font-black uppercase opacity-40">Set Progress</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-black italic">{currentSetIndex + 1}</span>
-                    <span className="text-xl font-bold opacity-20">/ {currentTargetSetsCount}</span>
+                    <span className="text-4xl font-black italic">{getExerciseDoneCount(currentExId) + 1}</span>
+                    <span className="text-xl font-bold opacity-20">/ {getExerciseTargetSets(currentExId)}</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 rounded-2xl border border-accent-gold/10 bg-muted/60 p-4">
@@ -623,14 +616,14 @@ function Session() {
 
               <div className="flex items-center gap-4">
                 <div className="flex flex-1 gap-2">
-                  {Array.from({ length: Math.max(currentTargetSetsCount, currentSetIndex + 1) }).map((_, i) => (
+                  {Array.from({ length: Math.max(getExerciseTargetSets(currentExId), getExerciseDoneCount(currentExId) + 1) }).map((_, i) => (
                     <div
                       key={i}
                       className={cn(
                         'h-1.5 flex-1 rounded-full transition-all duration-300',
-                        i < currentSetIndex
+                        i < getExerciseDoneCount(currentExId)
                           ? 'bg-primary'
-                          : i === currentSetIndex
+                          : i === getExerciseDoneCount(currentExId)
                             ? 'animate-pulse bg-accent-amber shadow-[0_0_8px_rgba(251,191,36,0.4)]'
                             : 'bg-muted',
                       )}
@@ -642,7 +635,7 @@ function Session() {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted"
-                  onClick={() => currentExerciseId && addExtraSet(currentExerciseId)}
+                  onClick={() => addExtraSet(currentExId)}
                 >
                   <PlusCircle className="h-5 w-5 text-primary" />
                 </Button>
@@ -652,13 +645,12 @@ function Session() {
 
           <Button
             size="lg"
-            disabled={!selectedMachine}
             className="group relative h-24 w-full overflow-hidden text-2xl font-black italic shadow-2xl shadow-primary/20"
             onClick={handleCompleteSet}
           >
             <span className="relative z-10 flex items-center gap-3">
               <Check className="h-8 w-8 stroke-3" />
-              DONE - START REST
+              {currentExerciseIds.length > 1 && activeExerciseIndex === 0 ? "DONE - NEXT PART" : "DONE - START REST"}
             </span>
             <div className="absolute inset-x-0 bottom-0 h-0 bg-white/10 transition-all duration-200 group-active:h-full" />
           </Button>
@@ -670,19 +662,19 @@ function Session() {
               <div className="flex items-center gap-4">
                 <div className="flex h-6 items-center rounded-full border border-accent-amber/20 bg-accent-amber/10 px-2">
                   <span className="text-[10px] font-black tracking-widest text-accent-amber uppercase">
-                    SET {exerciseTotalDoneCount + 1}
+                    SET {getExerciseDoneCount(currentExId)} COMPLETE
                   </span>
                   <span className="text-[10px] font-black tracking-widest text-accent-amber/30 uppercase ml-2">
                     RESTING
                   </span>
                 </div>
                 <div className="flex gap-1.5">
-                  {Array.from({ length: currentTargetSetsCount }).map((_, i) => (
+                  {Array.from({ length: getExerciseTargetSets(currentExId) }).map((_, i) => (
                     <div
                       key={i}
                       className={cn(
                         'h-1 w-3 rounded-full',
-                        i < exerciseTotalDoneCount ? 'bg-primary' : i === exerciseTotalDoneCount ? 'bg-accent-amber' : 'bg-muted',
+                        i < getExerciseDoneCount(currentExId) ? 'bg-primary' : i === getExerciseDoneCount(currentExId) ? 'bg-accent-amber' : 'bg-muted',
                       )}
                     />
                   ))}
@@ -723,7 +715,7 @@ function Session() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 rounded-full bg-background shadow-sm"
-                      onClick={() => setActualWeight((w) => Math.max(0, w - (selectedMachine?.weightStep || 2.5)))}
+                      onClick={() => setActualWeight((w) => Math.max(0, w - (currentExercise?.weightStep || 2.5)))}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
@@ -732,7 +724,7 @@ function Session() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 rounded-full bg-background shadow-sm"
-                      onClick={() => setActualWeight((w) => w + (selectedMachine?.weightStep || 2.5))}
+                      onClick={() => setActualWeight((w) => w + (currentExercise?.weightStep || 2.5))}
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -804,9 +796,9 @@ function Session() {
         <DrawerContent className="h-[85vh] border-none bg-background">
           <div className="mx-auto flex h-full w-full max-w-lg flex-col overflow-hidden">
             <DrawerHeader className="shrink-0 text-left">
-              <DrawerTitle className="text-2xl font-black italic">CHOOSE EXERCISE</DrawerTitle>
+              <DrawerTitle className="text-2xl font-black italic">SWITCH EXERCISE</DrawerTitle>
               <DrawerDescription className="text-[10px] font-bold tracking-widest uppercase opacity-60">
-                Gym Floor Availability Selection
+                Switching active targets
               </DrawerDescription>
             </DrawerHeader>
 

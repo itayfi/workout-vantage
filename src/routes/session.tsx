@@ -35,21 +35,13 @@ import {
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { PolarGrid, PolarRadiusAxis, RadialBar, RadialBarChart, Label } from 'recharts';
-import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
+import { CircularProgress } from '@/components/ui/circular-progress';
 
 export const Route = createRoute({
   getParentRoute: () => rootRoute,
   path: '/session',
   component: Session,
 });
-
-const chartConfig = {
-  time: {
-    label: 'Seconds',
-    color: 'var(--accent-amber)',
-  },
-} satisfies ChartConfig;
 
 function Session() {
   const { plans, _hasHydrated: plansHydrated } = useWorkoutPlans();
@@ -461,7 +453,7 @@ function Session() {
   }
 
   const restDuration = Math.max(currentExercise?.restSeconds ?? 60, 1);
-  const chartData = [{ time: timer, fill: 'var(--color-time)' }];
+  const restProgress = (timer / restDuration) * 100;
 
   const renderExerciseSelectionGroup = (ex: PlannedExercise) => {
     const isSelected = currentExerciseIds.includes(ex.id);
@@ -738,48 +730,14 @@ function Session() {
 
           <Card className="group relative flex flex-col overflow-hidden border-none bg-muted/20 shadow-none">
             <CardContent className="relative flex min-h-[320px] items-center justify-center p-0">
-                <div className="relative flex aspect-square w-full max-w-[280px] items-center justify-center">
-                    <ChartContainer config={chartConfig} className="absolute inset-10">
-                    <RadialBarChart
-                        data={chartData}
-                        startAngle={90}
-                        endAngle={90 + (timer / restDuration) * 360}
-                        innerRadius="70%"
-                        outerRadius="90%"
-                        barSize={20}
-                    >
-                        <PolarGrid
-                        gridType="circle"
-                        radialLines={false}
-                        stroke="none"
-                        className="first:fill-muted last:fill-background"
-                        polarRadius={[75, 95]}
-                        />
-                        <RadialBar dataKey="time" background cornerRadius={10} />
-                        <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-                        <Label
-                            content={({ viewBox }) => {
-                            if (viewBox && 'cx' in viewBox && 'cy' in viewBox) {
-                                return (
-                                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                                    <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-5xl font-black leading-none">
-                                    {timer}
-                                    </tspan>
-                                    <tspan x={viewBox.cx} y={viewBox.cy + 24} className="fill-muted-foreground text-[10px] font-black uppercase tracking-widest">
-                                    Seconds
-                                    </tspan>
-                                </text>
-                                );
-                            }
-                            }}
-                        />
-                        </PolarRadiusAxis>
-                    </RadialBarChart>
-                    </ChartContainer>
-
-                    {/* Decorative Ring */}
-                    <div className="absolute inset-0 rounded-full border border-dashed border-primary/10" />
+              <CircularProgress value={restProgress} strokeWidth={8} className="w-full max-w-[280px]">
+                <div className="flex flex-col items-center justify-center leading-none">
+                  <span className="text-5xl font-black">{timer}</span>
+                  <span className="mt-2 text-[10px] font-black tracking-widest text-muted-foreground uppercase">
+                    Seconds
+                  </span>
                 </div>
+              </CircularProgress>
             </CardContent>
           </Card>
 

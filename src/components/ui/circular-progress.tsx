@@ -2,49 +2,46 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 interface CircularProgressProps {
-  progress: number; // 0 to 100
-  size?: number;
+  value: number;
   strokeWidth?: number;
   className?: string;
   children?: React.ReactNode;
 }
 
 export function CircularProgress({
-  progress,
-  size = 120,
+  value,
   strokeWidth = 8,
   className,
   children,
 }: CircularProgressProps) {
-  const radius = (size - strokeWidth) / 2;
+  const clampedValue = Math.min(100, Math.max(0, value));
+  const radius = 45;
   const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (progress / 100) * circumference;
+  const offset = circumference - (clampedValue / 100) * circumference;
 
   return (
-    <div className={cn('relative flex items-center justify-center', className)} style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rotate-[-90deg]">
-        {/* Background circle */}
+    <div className={cn('relative flex aspect-square items-center justify-center', className)}>
+      <svg viewBox="0 0 100 100" className="h-full w-full -scale-x-100 rotate-[-90deg] overflow-visible">
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx="50"
+          cy="50"
           r={radius}
           fill="transparent"
           stroke="currentColor"
           strokeWidth={strokeWidth}
-          className="text-muted/20"
+          className="text-muted"
         />
-        {/* Progress circle */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx="50"
+          cy="50"
           r={radius}
           fill="transparent"
           stroke="currentColor"
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          style={{ strokeDashoffset: offset }}
+          strokeDashoffset={offset}
           strokeLinecap="round"
-          className="text-primary transition-all duration-300 ease-linear"
+          className="text-accent-amber transition-all duration-300 ease-linear"
         />
       </svg>
       {children && <div className="absolute inset-0 flex items-center justify-center">{children}</div>}

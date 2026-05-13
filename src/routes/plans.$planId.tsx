@@ -20,6 +20,7 @@ const exerciseSchema = z.object({
   weightStep: z.number().min(0),
   targetSets: z.number().min(1),
   targetReps: z.number().min(1),
+  restSeconds: z.number().min(0),
   targetWeight: z.number().min(0).optional(),
 });
 
@@ -68,7 +69,13 @@ function PlanEditor() {
     if (_hasHydrated && !initializedRef.current) {
       const existingPlan = plans.find((p) => p.id === planId);
       if (existingPlan) {
-        form.reset(existingPlan);
+        form.reset({
+          ...existingPlan,
+          exercises: existingPlan.exercises.map((exercise) => ({
+            ...exercise,
+            restSeconds: exercise.restSeconds ?? 60,
+          })),
+        });
       } else if (planId === 'new') {
         form.reset({
           id: Math.random().toString(36).substring(2, 11),
@@ -156,6 +163,7 @@ function PlanEditor() {
                 weightStep: 2.5,
                 targetSets: 3,
                 targetReps: 12,
+                restSeconds: 60,
               })
             }
           >
@@ -274,7 +282,7 @@ function ExerciseItem({
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <FormField
             control={control}
             name={`exercises.${index}.targetSets`}
@@ -319,6 +327,26 @@ function ExerciseItem({
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`exercises.${index}.restSeconds`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col gap-1">
+                <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                  Rest (sec)
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="5"
+                    {...field}
+                    onChange={(e) => field.onChange(parseInt(e.target.value))}
                   />
                 </FormControl>
               </FormItem>

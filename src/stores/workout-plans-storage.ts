@@ -10,6 +10,7 @@ export type PlannedExercise = {
   weightStep: number; // e.g. 2.5 or 5
   targetSets: number;
   targetReps: number;
+  restSeconds: number;
   targetWeight?: number;
   videoLink?: string;
 };

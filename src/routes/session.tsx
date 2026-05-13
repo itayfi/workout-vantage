@@ -220,7 +220,7 @@ function Session() {
     if (isSuperset && !isLastInCycle) {
       setActiveExerciseIndex(activeExerciseIndex + 1);
     } else {
-      setTimer(60);
+      setTimer(currentExercise.restSeconds ?? 60);
       setIsTimerRunning(true);
       updateStatus('RESTING');
     }
@@ -460,6 +460,7 @@ function Session() {
     );
   }
 
+  const restDuration = Math.max(currentExercise?.restSeconds ?? 60, 1);
   const chartData = [{ time: timer, fill: 'var(--color-time)' }];
 
   const renderExerciseSelectionGroup = (ex: PlannedExercise) => {
@@ -576,6 +577,7 @@ function Session() {
                     <span className="text-2xl leading-none font-black italic">{currentExercise?.name}</span>
                     <span className="mt-1 text-[10px] font-bold tracking-widest uppercase opacity-40">
                     {currentExercise?.machineType} • {currentExercise?.weightStep}kg step
+                    {currentExercise?.restSeconds !== undefined ? ` • ${currentExercise.restSeconds}s rest` : ''}
                     </span>
                 </div>
                 <Button
@@ -741,7 +743,7 @@ function Session() {
                     <RadialBarChart
                         data={chartData}
                         startAngle={90}
-                        endAngle={90 + (timer / 60) * 360}
+                        endAngle={90 + (timer / restDuration) * 360}
                         innerRadius="70%"
                         outerRadius="90%"
                         barSize={20}

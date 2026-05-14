@@ -5,6 +5,7 @@ import localforage from 'localforage';
 export interface PerformanceLog {
   reps: number;
   weight: number;
+  suggestedWeight: number;
   machineId: string;
   machineName: string;
   muscleName: string;
@@ -15,6 +16,7 @@ export interface CompletedWorkout {
   id: string;
   planId: string;
   planName: string;
+  date: number;
   startTime: number;
   endTime: number;
   // exerciseId -> PerformanceLog[]
@@ -22,6 +24,7 @@ export interface CompletedWorkout {
   sessionTargetSets: Record<string, number>;
   totalSets: number;
   totalExercises: number;
+  totalVolume: number;
 }
 
 interface WorkoutHistoryState {

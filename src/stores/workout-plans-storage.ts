@@ -7,6 +7,8 @@ export type PlannedExercise = {
   name: string;
   machineType: string; // e.g. "Machine", "Dumbbell"
   musclePath: string; // e.g. "Legs/Quads"
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
   weightStep: number; // e.g. 2.5 or 5
   targetSets: number;
   targetReps: number;

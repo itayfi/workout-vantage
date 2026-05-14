@@ -11,17 +11,21 @@ import { useForm, useFieldArray, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { MUSCLE_CATALOG, MUSCLE_GROUPS, getMuscleIdsFromPath } from '@/lib/muscles';
 
 const exerciseSchema = z.object({
   id: z.string(),
   name: z.string().min(2, 'Name required'),
   machineType: z.string().min(1, 'Type required'),
   musclePath: z.string().min(2, 'Muscle required'),
+  primaryMuscles: z.array(z.string()).min(1, 'Choose at least one primary muscle'),
+  secondaryMuscles: z.array(z.string()),
   weightStep: z.number().min(0),
   targetSets: z.number().min(1),
   targetReps: z.number().min(1),
   restSeconds: z.number().min(0),
   targetWeight: z.number().min(0).optional(),
+  videoLink: z.string().url('Enter a valid URL').or(z.literal('')).optional(),
 });
 
 const planSchema = z.object({
@@ -74,6 +78,12 @@ function PlanEditor() {
           exercises: existingPlan.exercises.map((exercise) => ({
             ...exercise,
             restSeconds: exercise.restSeconds ?? 60,
+            primaryMuscles:
+              exercise.primaryMuscles?.length
+                ? exercise.primaryMuscles
+                : getMuscleIdsFromPath(exercise.musclePath),
+            secondaryMuscles: exercise.secondaryMuscles ?? [],
+            videoLink: exercise.videoLink ?? '',
           })),
         });
       } else if (planId === 'new') {
@@ -159,11 +169,14 @@ function PlanEditor() {
                 id: Math.random().toString(36).substring(2, 11),
                 name: 'New Exercise',
                 machineType: 'Machine',
-                musclePath: 'Muscle Group',
+                musclePath: 'Legs/Quads',
+                primaryMuscles: ['quads'],
+                secondaryMuscles: [],
                 weightStep: 2.5,
                 targetSets: 3,
                 targetReps: 12,
                 restSeconds: 60,
+                videoLink: '',
               })
             }
           >
@@ -228,6 +241,22 @@ function ExerciseItem({
         </Button>
       </div>
       <CardContent className="flex flex-col gap-4 p-4">
+        <FormField
+          control={control}
+          name={`exercises.${index}.videoLink`}
+          render={({ field }) => (
+            <FormItem className="flex flex-col gap-1">
+              <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+                Video Link
+              </FormLabel>
+              <FormControl>
+                <Input placeholder="https://..." {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={control}
@@ -280,6 +309,11 @@ function ExerciseItem({
               </FormItem>
             )}
           />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <MusclePicker control={control} index={index} name="primaryMuscles" label="Primary Muscles" />
+          <MusclePicker control={control} index={index} name="secondaryMuscles" label="Secondary Muscles" />
         </div>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -355,5 +389,70 @@ function ExerciseItem({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function MusclePicker({
+  control,
+  index,
+  name,
+  label,
+}: {
+  control: Control<PlanFormValues>;
+  index: number;
+  name: 'primaryMuscles' | 'secondaryMuscles';
+  label: string;
+}) {
+  return (
+    <FormField
+      control={control}
+      name={`exercises.${index}.${name}`}
+      render={({ field }) => {
+        const selected = field.value ?? [];
+
+        return (
+          <FormItem className="flex flex-col gap-2">
+            <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
+              {label}
+            </FormLabel>
+            <FormControl>
+              <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-3">
+                {MUSCLE_GROUPS.map((group) => (
+                  <div key={group} className="space-y-1.5">
+                    <span className="block text-[9px] font-black tracking-widest text-primary uppercase opacity-70">
+                      {group}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {MUSCLE_CATALOG.filter((muscle) => muscle.group === group).map((muscle) => {
+                        const isSelected = selected.includes(muscle.id);
+                        return (
+                          <Button
+                            key={muscle.id}
+                            type="button"
+                            variant={isSelected ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-7 rounded-md px-2 text-[10px] font-black uppercase"
+                            onClick={() => {
+                              field.onChange(
+                                isSelected
+                                  ? selected.filter((id: string) => id !== muscle.id)
+                                  : [...selected, muscle.id],
+                              );
+                            }}
+                          >
+                            {muscle.name}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        );
+      }}
+    />
   );
 }

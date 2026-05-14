@@ -23,6 +23,8 @@ import {
   ChevronDown,
   LayoutGrid,
   ChevronRight,
+  ExternalLink,
+  Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -36,12 +38,38 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { CircularProgress } from '@/components/ui/circular-progress';
+import { formatMuscleList, getMuscleGroup, getMuscleIdsFromPath } from '@/lib/muscles';
 
 export const Route = createRoute({
   getParentRoute: () => rootRoute,
   path: '/session',
   component: Session,
 });
+
+function getPrimaryMuscles(exercise: PlannedExercise) {
+  if (exercise.primaryMuscles?.length) {
+    return exercise.primaryMuscles;
+  }
+
+  return getMuscleIdsFromPath(exercise.musclePath);
+}
+
+function getSecondaryMuscles(exercise: PlannedExercise) {
+  return exercise.secondaryMuscles ?? [];
+}
+
+function getExerciseGroup(exercise: PlannedExercise) {
+  return getMuscleGroup(getPrimaryMuscles(exercise)[0] ?? '').toUpperCase();
+}
+
+function hasPrimaryOverlap(a: PlannedExercise, b: PlannedExercise) {
+  const bPrimary = new Set(getPrimaryMuscles(b));
+  return getPrimaryMuscles(a).some((muscle) => bPrimary.has(muscle));
+}
+
+function getExerciseVolume(logs: { reps: number; weight: number }[]) {
+  return logs.reduce((total, log) => total + log.reps * log.weight, 0);
+}
 
 function Session() {
   const { plans, _hasHydrated: plansHydrated } = useWorkoutPlans();
@@ -62,7 +90,7 @@ function Session() {
     addExtraSet,
     resetSession,
   } = useActiveSession();
-  const { addWorkout } = useWorkoutHistory();
+  const { addWorkout, history } = useWorkoutHistory();
 
   const [actualReps, setActualReps] = React.useState(12);
   const [actualWeight, setActualWeight] = React.useState(20);
@@ -71,23 +99,12 @@ function Session() {
   const [isSelectionDrawerOpen, setIsSelectionDrawerOpen] = React.useState(false);
   const [isBreakdownOpen, setIsBreakdownOpen] = React.useState(false);
   const [selectedForSuperset, setSelectedForSuperset] = React.useState<string[]>([]);
+  const [isSupersetMode, setIsSupersetMode] = React.useState(false);
 
   const activePlan = plans.find((p) => p.id === activePlanId);
   
   const currentExId = currentExerciseIds[activeExerciseIndex];
   const currentExercise = activePlan?.exercises.find((e) => e.id === currentExId);
-
-  // Grouping logic for the selection UI (now just by top level muscle for better browsing)
-  const groupedExercises = React.useMemo(() => {
-    if (!activePlan) return {};
-    const groups: Record<string, typeof activePlan.exercises> = {};
-    activePlan.exercises.forEach((ex) => {
-      const topLevel = ex.musclePath.split('/')[0].toUpperCase();
-      if (!groups[topLevel]) groups[topLevel] = [];
-      groups[topLevel].push(ex);
-    });
-    return groups;
-  }, [activePlan]);
 
   const getExerciseDoneCount = React.useCallback((exId: string) => {
     return (logs[exId] || []).length;
@@ -98,6 +115,39 @@ function Session() {
     return sessionTargetSets[exId] || planEx?.targetSets || 0;
   }, [activePlan, sessionTargetSets]);
 
+  const completedPrimaryMuscles = React.useMemo(() => {
+    if (!activePlan) return new Set<string>();
+    const muscles = new Set<string>();
+    activePlan.exercises.forEach((exercise) => {
+      if (getExerciseDoneCount(exercise.id) > 0) {
+        getPrimaryMuscles(exercise).forEach((muscle) => muscles.add(muscle));
+      }
+    });
+    return muscles;
+  }, [activePlan, getExerciseDoneCount]);
+
+  const completedSecondaryMuscles = React.useMemo(() => {
+    if (!activePlan) return new Set<string>();
+    const muscles = new Set<string>();
+    activePlan.exercises.forEach((exercise) => {
+      if (getExerciseDoneCount(exercise.id) > 0) {
+        getSecondaryMuscles(exercise).forEach((muscle) => muscles.add(muscle));
+      }
+    });
+    return muscles;
+  }, [activePlan, getExerciseDoneCount]);
+
+  const groupedExercises = React.useMemo(() => {
+    if (!activePlan) return {};
+    const groups: Record<string, typeof activePlan.exercises> = {};
+    activePlan.exercises.forEach((ex) => {
+      const topLevel = getExerciseGroup(ex);
+      if (!groups[topLevel]) groups[topLevel] = [];
+      groups[topLevel].push(ex);
+    });
+    return groups;
+  }, [activePlan]);
+
   const isExerciseDone = React.useCallback(
     (exId: string) => {
       const done = getExerciseDoneCount(exId);
@@ -107,21 +157,91 @@ function Session() {
     [getExerciseDoneCount, getExerciseTargetSets],
   );
 
+  const getSuggestedWeight = React.useCallback(
+    (exercise: PlannedExercise) => {
+      const lastSessionWithExercise = history.find((session) => session.logs[exercise.id]?.length);
+      const lastLogs = lastSessionWithExercise?.logs[exercise.id] ?? [];
+
+      if (lastLogs.length === 0) {
+        return exercise.targetWeight ?? 20;
+      }
+
+      const lastWeight = lastLogs[lastLogs.length - 1]?.weight ?? exercise.targetWeight ?? 20;
+      const hitRepTarget = lastLogs.every((log) => log.reps >= exercise.targetReps);
+
+      return hitRepTarget ? lastWeight + exercise.weightStep : lastWeight;
+    },
+    [history],
+  );
+
+  const getRecommendation = React.useCallback(
+    (exercise: PlannedExercise) => {
+      const primary = getPrimaryMuscles(exercise);
+      const secondary = getSecondaryMuscles(exercise);
+      const done = isExerciseDone(exercise.id);
+      const primaryAlreadyCovered = primary.some((muscle) => completedPrimaryMuscles.has(muscle));
+      const hasSecondaryWarmup = primary.some((muscle) => completedSecondaryMuscles.has(muscle));
+      const coversFreshSecondary = secondary.some((muscle) => !completedPrimaryMuscles.has(muscle));
+
+      let score = 50;
+      if (done) score -= 60;
+      if (primaryAlreadyCovered) score -= 25;
+      if (hasSecondaryWarmup) score += 18;
+      if (coversFreshSecondary) score += 10;
+      if (getExerciseDoneCount(exercise.id) === 0) score += 8;
+
+      const label = done
+        ? 'Complete'
+        : hasSecondaryWarmup
+          ? 'Primed'
+          : primaryAlreadyCovered
+            ? 'Extra focus'
+            : coversFreshSecondary
+              ? 'Smart lead-in'
+              : 'Recommended';
+
+      const detail = done
+        ? 'Target sets complete'
+        : hasSecondaryWarmup
+          ? 'Secondary work already warmed this primary muscle'
+          : primaryAlreadyCovered
+            ? 'Primary muscle already trained this session'
+            : coversFreshSecondary
+              ? 'Builds useful secondary coverage before primary work'
+              : 'Broad primary muscle coverage';
+
+      return { score, label, detail, primaryAlreadyCovered };
+    },
+    [completedPrimaryMuscles, completedSecondaryMuscles, getExerciseDoneCount, isExerciseDone],
+  );
+
+  const sortedGroupedExercises = React.useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(groupedExercises).map(([group, exercises]) => [
+        group,
+        [...exercises].sort((a, b) => getRecommendation(b).score - getRecommendation(a).score),
+      ]),
+    );
+  }, [groupedExercises, getRecommendation]);
+
   const finalizeWorkout = React.useCallback(() => {
     if (!activePlan) return;
 
     const totalSets = Object.values(logs).flat().length;
     const totalExercises = Object.keys(logs).length;
+    const totalVolume = Object.values(logs).reduce((total, exerciseLogs) => total + getExerciseVolume(exerciseLogs), 0);
 
     addWorkout({
       planId: activePlan.id,
       planName: activePlan.name,
+      date: startTime || Date.now(),
       startTime: startTime || Date.now(),
       endTime: Date.now(),
       logs,
       sessionTargetSets,
       totalSets,
       totalExercises,
+      totalVolume,
     });
 
     updateStatus('SUMMARY');
@@ -136,6 +256,7 @@ function Session() {
       updateStatus('EXERCISE');
       setIsSelectionDrawerOpen(false);
       setSelectedForSuperset([]);
+      setIsSupersetMode(false);
     },
     [getExerciseDoneCount, updateSet, updateStatus],
   );
@@ -159,9 +280,9 @@ function Session() {
   React.useEffect(() => {
     if (status === 'EXERCISE' && currentExercise) {
       setActualReps(currentExercise.targetReps);
-      setActualWeight(currentExercise.targetWeight ?? 20);
+      setActualWeight(getSuggestedWeight(currentExercise));
     }
-  }, [currentExId, currentExercise, status]);
+  }, [currentExId, currentExercise, getSuggestedWeight, status]);
 
   React.useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -189,7 +310,7 @@ function Session() {
 
   const handleStartSession = (planId: string) => {
     const plan = plans.find((p) => p.id === planId);
-    if (plan) {
+    if (plan && plan.exercises.length > 0) {
       const initialExerciseSets = plan.exercises.map((s) => ({ exerciseId: s.id, sets: s.targetSets }));
       startSession(planId, [plan.exercises[0].id], initialExerciseSets);
     }
@@ -201,9 +322,10 @@ function Session() {
     logSet(currentExId, getExerciseDoneCount(currentExId), {
       reps: actualReps,
       weight: actualWeight,
+      suggestedWeight: getSuggestedWeight(currentExercise),
       machineId: currentExId,
       machineName: currentExercise.name,
-      muscleName: currentExercise.musclePath,
+      muscleName: formatMuscleList(getPrimaryMuscles(currentExercise)),
     });
 
     const isSuperset = currentExerciseIds.length > 1;
@@ -284,10 +406,10 @@ function Session() {
               <span className="text-[10px] font-black text-accent-amber uppercase opacity-40">Total Volume</span>
               <div className="flex items-baseline gap-1">
                 <span className="text-3xl font-black text-accent-amber italic">
-                  {Object.values(logs).flat().length}
+                  {Object.values(logs).reduce((total, exerciseLogs) => total + getExerciseVolume(exerciseLogs), 0)}
                 </span>
                 <span className="text-[10px] font-bold tracking-widest text-accent-amber uppercase opacity-30">
-                  Sets
+                  KG
                 </span>
               </div>
             </CardContent>
@@ -362,7 +484,30 @@ function Session() {
         </div>
 
         <div className="flex flex-col gap-8">
-            {Object.entries(groupedExercises).map(([group, exercises]) => {
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant={isSupersetMode ? 'default' : 'outline'}
+                className="h-12 flex-1 font-black uppercase italic"
+                onClick={() => {
+                  setIsSupersetMode((value) => !value);
+                  setSelectedForSuperset([]);
+                }}
+              >
+                <Target className="mr-2 h-4 w-4" />
+                Superset
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-12 px-4 font-black text-muted-foreground uppercase"
+                onClick={finalizeWorkout}
+              >
+                Finish
+              </Button>
+            </div>
+
+            {Object.entries(sortedGroupedExercises).map(([group, exercises]) => {
                 return (
                     <div key={group} className="flex flex-col gap-3">
                         <span className="px-1 text-[10px] font-black tracking-[0.2em] text-primary uppercase">{group}</span>
@@ -370,6 +515,11 @@ function Session() {
                             {exercises.map(ex => {
                                 const done = isExerciseDone(ex.id);
                                 const isSelected = selectedForSuperset.includes(ex.id);
+                                const recommendation = getRecommendation(ex);
+                                const selectedExercises = selectedForSuperset
+                                  .map((id) => activePlan?.exercises.find((candidate) => candidate.id === id))
+                                  .filter(Boolean) as PlannedExercise[];
+                                const hasSupersetOverlap = selectedExercises.some((selected) => hasPrimaryOverlap(selected, ex));
                                 return (
                                     <div key={ex.id} className="flex flex-col gap-2">
                                         <Card
@@ -379,6 +529,10 @@ function Session() {
                                                 done && !isSelected && "opacity-60"
                                             )}
                                             onClick={() => {
+                                                if (!isSupersetMode) {
+                                                    selectExercises([ex.id]);
+                                                    return;
+                                                }
                                                 if (isSelected) {
                                                     setSelectedForSuperset(s => s.filter(id => id !== ex.id));
                                                 } else if (selectedForSuperset.length < 2) {
@@ -399,9 +553,21 @@ function Session() {
                                                         <span className="text-[10px] font-bold uppercase opacity-60">
                                                             {getExerciseDoneCount(ex.id)} / {getExerciseTargetSets(ex.id)} sets • {ex.machineType}
                                                         </span>
+                                                        <span className="mt-1 text-[9px] font-black uppercase text-primary/70">
+                                                            {recommendation.label}: {recommendation.detail}
+                                                        </span>
+                                                        <span className="mt-1 text-[9px] font-bold uppercase opacity-50">
+                                                            Primary: {formatMuscleList(getPrimaryMuscles(ex))}
+                                                            {getSecondaryMuscles(ex).length > 0 ? ` - Secondary: ${formatMuscleList(getSecondaryMuscles(ex))}` : ''}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
+                                                    {isSupersetMode && hasSupersetOverlap && !isSelected && (
+                                                        <span className="hidden rounded border border-accent-amber/30 bg-accent-amber/10 px-2 py-1 text-[8px] font-black text-accent-amber uppercase sm:block">
+                                                            Primary overlap
+                                                        </span>
+                                                    )}
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -430,21 +596,11 @@ function Session() {
                 <Button
                     size="lg"
                     className="h-16 flex-1 text-xl font-black italic shadow-2xl"
-                    disabled={selectedForSuperset.length === 0}
+                    disabled={!isSupersetMode || selectedForSuperset.length === 0}
                     onClick={() => selectExercises(selectedForSuperset)}
                 >
-                    {selectedForSuperset.length === 2 ? "START SUPERSET" : "START EXERCISE"}
+                    {selectedForSuperset.length > 1 ? "START SUPERSET" : "START EXERCISE"}
                 </Button>
-                {selectedForSuperset.length === 0 && (
-                    <Button
-                        variant="ghost"
-                        size="lg"
-                        className="h-16 px-6 font-black text-muted-foreground italic"
-                        onClick={finalizeWorkout}
-                    >
-                        FINISH
-                    </Button>
-                )}
             </div>
           </div>
         </div>
@@ -509,7 +665,7 @@ function Session() {
             {currentExercise?.name || "Exercise"}
           </h1>
           <span className="text-[10px] font-bold tracking-widest text-primary/40 uppercase">
-            {currentExercise?.musclePath}
+            {currentExercise ? formatMuscleList(getPrimaryMuscles(currentExercise)) : ''}
           </span>
         </div>
 
@@ -572,15 +728,28 @@ function Session() {
                     {currentExercise?.restSeconds !== undefined ? ` • ${currentExercise.restSeconds}s rest` : ''}
                     </span>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 bg-background/50 text-[10px] font-black tracking-widest uppercase"
-                  onClick={() => setIsSelectionDrawerOpen(true)}
-                >
-                  Switch
-                </Button>
+                <div className="flex items-center gap-2">
+                  {currentExercise?.videoLink && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 bg-background/50"
+                      onClick={() => window.open(currentExercise.videoLink, '_blank', 'noopener,noreferrer')}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 bg-background/50 text-[10px] font-black tracking-widest uppercase"
+                    onClick={() => setIsSelectionDrawerOpen(true)}
+                  >
+                    Switch
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -598,10 +767,10 @@ function Session() {
                       <span className="text-2xl font-black text-accent-amber italic">{currentExercise?.targetReps}</span>
                       <span className="text-[8px] font-bold text-accent-amber uppercase opacity-60">Reps</span>
                     </div>
-                    {currentExercise?.targetWeight !== undefined && (
+                    {currentExercise && (
                       <div className="mt-0.5 flex items-baseline gap-1">
-                        <span className="text-2xl font-black text-accent-gold italic">{currentExercise.targetWeight}</span>
-                        <span className="text-[8px] font-bold text-accent-gold uppercase opacity-60">kg</span>
+                        <span className="text-2xl font-black text-accent-gold italic">{getSuggestedWeight(currentExercise)}</span>
+                        <span className="text-[8px] font-bold text-accent-gold uppercase opacity-60">kg suggested</span>
                       </div>
                     )}
                   </div>
@@ -763,7 +932,7 @@ function Session() {
             </DrawerHeader>
 
             <div className="flex-1 overflow-y-auto px-4 py-2 pb-20">
-              {Object.entries(groupedExercises).map(([group, exercises]) => (
+              {Object.entries(sortedGroupedExercises).map(([group, exercises]) => (
                 <div key={group} className="flex flex-col gap-3">
                   <h3 className="mt-4 px-1 text-xs font-black tracking-widest text-primary uppercase">{group}</h3>
                   <div className="flex flex-col gap-3">

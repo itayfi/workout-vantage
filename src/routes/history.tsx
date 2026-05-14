@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, useNavigate } from '@tanstack/react-router';
 import { Route as rootRoute } from './__root';
 import { useWorkoutHistory, type CompletedWorkout } from '@/stores/workout-history-storage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,9 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { useWorkoutPlans } from '@/stores/workout-plans-storage';
+import { useActiveSession } from '@/stores/active-session-storage';
 
 export const Route = createRoute({
   getParentRoute: () => rootRoute,
@@ -17,10 +20,39 @@ export const Route = createRoute({
 
 function HistoryView() {
   const { history, _hasHydrated } = useWorkoutHistory();
+  const { plans } = useWorkoutPlans();
+  const { startSession } = useActiveSession();
+  const navigate = useNavigate();
   const [openWorkouts, setOpenWorkouts] = React.useState<Record<string, boolean>>({});
 
   const toggleWorkout = (id: string) => {
     setOpenWorkouts((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const repeatWorkout = (session: CompletedWorkout) => {
+    const plan = plans.find((candidate) => candidate.id === session.planId);
+    if (!plan || plan.exercises.length === 0) {
+      return;
+    }
+
+    const firstLoggedExerciseId = Object.keys(session.logs).find((exerciseId) =>
+      plan.exercises.some((exercise) => exercise.id === exerciseId),
+    );
+    const initialExerciseId = firstLoggedExerciseId ?? plan.exercises[0].id;
+    const initialExerciseSets = plan.exercises.map((exercise) => ({
+      exerciseId: exercise.id,
+      sets: session.sessionTargetSets[exercise.id] || exercise.targetSets,
+    }));
+
+    startSession(plan.id, [initialExerciseId], initialExerciseSets);
+    navigate({ to: '/session' });
+  };
+
+  const getSessionVolume = (session: CompletedWorkout) => {
+    return session.totalVolume ?? Object.values(session.logs).reduce(
+      (total, logs) => total + logs.reduce((exerciseTotal, log) => exerciseTotal + log.reps * log.weight, 0),
+      0,
+    );
   };
 
   if (!_hasHydrated) {
@@ -97,7 +129,7 @@ function HistoryView() {
                 </CollapsibleTrigger>
 
                 <CardContent className="pb-6">
-                  <div className="grid grid-cols-2 gap-4 border-t border-border/40 pt-6">
+                  <div className="grid grid-cols-3 gap-4 border-t border-border/40 pt-6">
                     <div className="flex flex-col">
                       <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">
                         Intensity
@@ -109,6 +141,14 @@ function HistoryView() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">
+                        Volume
+                      </span>
+                      <span className="text-xl font-black text-accent-amber italic">
+                        {getSessionVolume(session)} <span className="ml-1 text-[10px] uppercase opacity-40">kg</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">
                         Scope
                       </span>
                       <span className="text-xl font-black italic">
@@ -116,6 +156,16 @@ function HistoryView() {
                       </span>
                     </div>
                   </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 h-11 w-full font-black uppercase italic"
+                    disabled={!plans.some((plan) => plan.id === session.planId)}
+                    onClick={() => repeatWorkout(session)}
+                  >
+                    Repeat this Workout
+                  </Button>
 
                   <CollapsibleContent className="mt-6 animate-in space-y-4 duration-300 slide-in-from-top-2">
                     <Separator className="bg-border/30" />

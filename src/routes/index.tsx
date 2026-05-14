@@ -3,6 +3,7 @@ import { Route as rootRoute } from './__root';
 import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
 import { Play, Calendar, History, TrendingUp } from 'lucide-react';
 import { useWorkoutPlans } from '@/stores/workout-plans-storage';
+import { useWorkoutHistory } from '@/stores/workout-history-storage';
 import { cn } from '@/lib/utils';
 import type { ComponentType } from 'react';
 
@@ -12,8 +13,37 @@ export const Route = createRoute({
   component: Dashboard,
 });
 
+function computeStreak(history: { date: number }[]): number {
+  if (history.length === 0) return 0;
+  // Get unique workout dates as YYYY-MM-DD strings (local time)
+  const daySet = new Set(
+    history.map((w) => new Date(w.date).toLocaleDateString('en-CA')),
+  );
+  const days = Array.from(daySet).sort().reverse(); // most recent first
+  const today = new Date().toLocaleDateString('en-CA');
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
+  // Streak must start from today or yesterday
+  if (days[0] !== today && days[0] !== yesterday) return 0;
+  let streak = 1;
+  for (let i = 1; i < days.length; i++) {
+    const prev = new Date(days[i - 1]);
+    const curr = new Date(days[i]);
+    const diff = (prev.getTime() - curr.getTime()) / 86400000;
+    if (Math.round(diff) === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
 function Dashboard() {
   const { plans } = useWorkoutPlans();
+  const { history } = useWorkoutHistory();
+
+  const workoutCount = history.length;
+  const streak = computeStreak(history);
 
   return (
     <div className="flex animate-in flex-col gap-8 duration-500 slide-in-from-bottom-5 fade-in">
@@ -43,8 +73,8 @@ function Dashboard() {
 
         {/* Stats Overview */}
         <div className="grid grid-cols-2 gap-4">
-          <StatCard label="Workouts" value="24" icon={History} />
-          <StatCard label="Streak" value="12d" icon={TrendingUp} />
+          <StatCard label="Workouts" value={String(workoutCount)} icon={History} />
+          <StatCard label="Streak" value={streak > 0 ? `${streak}d` : '—'} icon={TrendingUp} />
         </div>
       </section>
     </div>

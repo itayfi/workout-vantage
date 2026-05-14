@@ -185,7 +185,8 @@ function Session() {
 
       let score = 50;
       if (done) score -= 60;
-      if (primaryAlreadyCovered) score -= 25;
+      // Exercises where primary is already trained go to the bottom (like done), but still accessible
+      if (primaryAlreadyCovered && !done) score -= 40;
       if (hasSecondaryWarmup) score += 18;
       if (coversFreshSecondary) score += 10;
       if (getExerciseDoneCount(exercise.id) === 0) score += 8;
@@ -210,7 +211,10 @@ function Session() {
               ? 'Builds useful secondary coverage before primary work'
               : 'Broad primary muscle coverage';
 
-      return { score, label, detail, primaryAlreadyCovered };
+      // Deprioritized = done OR primary already covered — moves to bottom of list
+      const isDeprioritized = done || primaryAlreadyCovered;
+
+      return { score, label, detail, primaryAlreadyCovered, isDeprioritized };
     },
     [completedPrimaryMuscles, completedSecondaryMuscles, getExerciseDoneCount, isExerciseDone],
   );
@@ -219,7 +223,15 @@ function Session() {
     return Object.fromEntries(
       Object.entries(groupedExercises).map(([group, exercises]) => [
         group,
-        [...exercises].sort((a, b) => getRecommendation(b).score - getRecommendation(a).score),
+        [...exercises].sort((a, b) => {
+          const ra = getRecommendation(a);
+          const rb = getRecommendation(b);
+          // Two-tier sort: non-deprioritized first, deprioritized last
+          if (ra.isDeprioritized !== rb.isDeprioritized) {
+            return ra.isDeprioritized ? 1 : -1;
+          }
+          return rb.score - ra.score;
+        }),
       ]),
     );
   }, [groupedExercises, getRecommendation]);
@@ -508,84 +520,97 @@ function Session() {
             </div>
 
             {Object.entries(sortedGroupedExercises).map(([group, exercises]) => {
+                const activeExercises = exercises.filter(ex => !getRecommendation(ex).isDeprioritized);
+                const deprioritizedExercises = exercises.filter(ex => getRecommendation(ex).isDeprioritized);
+                const renderExerciseCard = (ex: PlannedExercise) => {
+                    const done = isExerciseDone(ex.id);
+                    const isSelected = selectedForSuperset.includes(ex.id);
+                    const recommendation = getRecommendation(ex);
+                    const selectedExercises = selectedForSuperset
+                      .map((id) => activePlan?.exercises.find((candidate) => candidate.id === id))
+                      .filter(Boolean) as PlannedExercise[];
+                    const hasSupersetOverlap = selectedExercises.some((selected) => hasPrimaryOverlap(selected, ex));
+                    return (
+                        <div key={ex.id} className="flex flex-col gap-2">
+                            <Card
+                                className={cn(
+                                    "cursor-pointer border-2 transition-all",
+                                    isSelected ? "border-primary bg-primary/10" : "border-transparent bg-muted/40",
+                                    recommendation.isDeprioritized && !isSelected && "opacity-50"
+                                )}
+                                onClick={() => {
+                                    if (!isSupersetMode) {
+                                        selectExercises([ex.id]);
+                                        return;
+                                    }
+                                    if (isSelected) {
+                                        setSelectedForSuperset(s => s.filter(id => id !== ex.id));
+                                    } else if (selectedForSuperset.length < 2) {
+                                        setSelectedForSuperset(s => [...s, ex.id]);
+                                    }
+                                }}
+                            >
+                                <CardContent className="flex items-center justify-between p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn(
+                                            "flex h-10 w-10 items-center justify-center rounded-lg shadow-sm",
+                                            done ? "bg-primary text-primary-foreground" : "bg-background text-primary"
+                                        )}>
+                                            {done ? <Check className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="font-black tracking-tight uppercase italic">{ex.name}</span>
+                                            <span className="text-[10px] font-bold uppercase opacity-60">
+                                                {getExerciseDoneCount(ex.id)} / {getExerciseTargetSets(ex.id)} sets • {ex.machineType}
+                                            </span>
+                                            <span className="mt-1 text-[9px] font-black uppercase text-primary/70">
+                                                {recommendation.label}: {recommendation.detail}
+                                            </span>
+                                            <span className="mt-1 text-[9px] font-bold uppercase opacity-50">
+                                                Primary: {formatMuscleList(getPrimaryMuscles(ex))}
+                                                {getSecondaryMuscles(ex).length > 0 ? ` - Secondary: ${formatMuscleList(getSecondaryMuscles(ex))}` : ''}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {isSupersetMode && hasSupersetOverlap && !isSelected && (
+                                            <span className="hidden rounded border border-accent-amber/30 bg-accent-amber/10 px-2 py-1 text-[8px] font-black text-accent-amber uppercase sm:block">
+                                                Primary overlap
+                                            </span>
+                                        )}
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 px-2 text-[10px] font-black uppercase opacity-40 hover:opacity-100"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                addExtraSet(ex.id);
+                                            }}
+                                        >
+                                            +1 Set
+                                        </Button>
+                                        {isSelected && <Check className="h-5 w-5 text-primary" />}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    );
+                };
                 return (
                     <div key={group} className="flex flex-col gap-3">
                         <span className="px-1 text-[10px] font-black tracking-[0.2em] text-primary uppercase">{group}</span>
                         <div className="grid gap-3">
-                            {exercises.map(ex => {
-                                const done = isExerciseDone(ex.id);
-                                const isSelected = selectedForSuperset.includes(ex.id);
-                                const recommendation = getRecommendation(ex);
-                                const selectedExercises = selectedForSuperset
-                                  .map((id) => activePlan?.exercises.find((candidate) => candidate.id === id))
-                                  .filter(Boolean) as PlannedExercise[];
-                                const hasSupersetOverlap = selectedExercises.some((selected) => hasPrimaryOverlap(selected, ex));
-                                return (
-                                    <div key={ex.id} className="flex flex-col gap-2">
-                                        <Card
-                                            className={cn(
-                                                "cursor-pointer border-2 transition-all",
-                                                isSelected ? "border-primary bg-primary/10" : "border-transparent bg-muted/40",
-                                                done && !isSelected && "opacity-60"
-                                            )}
-                                            onClick={() => {
-                                                if (!isSupersetMode) {
-                                                    selectExercises([ex.id]);
-                                                    return;
-                                                }
-                                                if (isSelected) {
-                                                    setSelectedForSuperset(s => s.filter(id => id !== ex.id));
-                                                } else if (selectedForSuperset.length < 2) {
-                                                    setSelectedForSuperset(s => [...s, ex.id]);
-                                                }
-                                            }}
-                                        >
-                                            <CardContent className="flex items-center justify-between p-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={cn(
-                                                        "flex h-10 w-10 items-center justify-center rounded-lg shadow-sm",
-                                                        done ? "bg-primary text-primary-foreground" : "bg-background text-primary"
-                                                    )}>
-                                                        {done ? <Check className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-black tracking-tight uppercase italic">{ex.name}</span>
-                                                        <span className="text-[10px] font-bold uppercase opacity-60">
-                                                            {getExerciseDoneCount(ex.id)} / {getExerciseTargetSets(ex.id)} sets • {ex.machineType}
-                                                        </span>
-                                                        <span className="mt-1 text-[9px] font-black uppercase text-primary/70">
-                                                            {recommendation.label}: {recommendation.detail}
-                                                        </span>
-                                                        <span className="mt-1 text-[9px] font-bold uppercase opacity-50">
-                                                            Primary: {formatMuscleList(getPrimaryMuscles(ex))}
-                                                            {getSecondaryMuscles(ex).length > 0 ? ` - Secondary: ${formatMuscleList(getSecondaryMuscles(ex))}` : ''}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {isSupersetMode && hasSupersetOverlap && !isSelected && (
-                                                        <span className="hidden rounded border border-accent-amber/30 bg-accent-amber/10 px-2 py-1 text-[8px] font-black text-accent-amber uppercase sm:block">
-                                                            Primary overlap
-                                                        </span>
-                                                    )}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-8 px-2 text-[10px] font-black uppercase opacity-40 hover:opacity-100"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            addExtraSet(ex.id);
-                                                        }}
-                                                    >
-                                                        +1 Set
-                                                    </Button>
-                                                    {isSelected && <Check className="h-5 w-5 text-primary" />}
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-                                );
-                            })}
+                            {activeExercises.map(renderExerciseCard)}
+                            {deprioritizedExercises.length > 0 && activeExercises.length > 0 && (
+                                <div className="flex items-center gap-2 px-1 py-1">
+                                    <div className="h-px flex-1 bg-border/30" />
+                                    <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase opacity-40">
+                                        Already covered
+                                    </span>
+                                    <div className="h-px flex-1 bg-border/30" />
+                                </div>
+                            )}
+                            {deprioritizedExercises.map(renderExerciseCard)}
                         </div>
                     </div>
                 );
@@ -843,6 +868,17 @@ function Session() {
                   ))}
                 </div>
               </div>
+              {currentExercise?.videoLink && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 bg-background/50"
+                  onClick={() => window.open(currentExercise.videoLink, '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

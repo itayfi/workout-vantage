@@ -11,7 +11,11 @@ import { useForm, useFieldArray, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { useFormContext } from 'react-hook-form';
 import { MUSCLE_CATALOG, MUSCLE_GROUPS, getMuscleIdsFromPath } from '@/lib/muscles';
+import { EXERCISE_PRESETS, type ExercisePreset } from '@/lib/exercises';
+import { Search, Dumbbell, ChevronRight, Sparkles, Video } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 const exerciseSchema = z.object({
   id: z.string(),
@@ -78,10 +82,9 @@ function PlanEditor() {
           exercises: existingPlan.exercises.map((exercise) => ({
             ...exercise,
             restSeconds: exercise.restSeconds ?? 60,
-            primaryMuscles:
-              exercise.primaryMuscles?.length
-                ? exercise.primaryMuscles
-                : getMuscleIdsFromPath(exercise.musclePath),
+            primaryMuscles: exercise.primaryMuscles?.length
+              ? exercise.primaryMuscles
+              : getMuscleIdsFromPath(exercise.musclePath),
             secondaryMuscles: exercise.secondaryMuscles ?? [],
             videoLink: exercise.videoLink ?? '',
           })),
@@ -160,29 +163,51 @@ function PlanEditor() {
             <ExerciseItem key={item.id} index={index} control={form.control} onRemove={() => removeExercise(index)} />
           ))}
 
-          <Button
-            type="button"
-            variant="outline"
-            className="flex h-20 flex-col gap-1 border-2 border-dashed bg-muted/10 transition-colors hover:bg-muted/20"
-            onClick={() =>
-              appendExercise({
-                id: Math.random().toString(36).substring(2, 11),
-                name: 'New Exercise',
-                machineType: 'Machine',
-                musclePath: 'Legs/Quads',
-                primaryMuscles: ['quads'],
-                secondaryMuscles: [],
-                weightStep: 2.5,
-                targetSets: 3,
-                targetReps: 12,
-                restSeconds: 60,
-                videoLink: '',
-              })
-            }
-          >
-            <Plus className="h-5 w-5 text-primary" />
-            <span className="font-bold">Add Planned Exercise</span>
-          </Button>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex h-20 flex-col gap-1 border-2 border-dashed bg-muted/10 transition-colors hover:bg-muted/20"
+              onClick={() =>
+                appendExercise({
+                  id: Math.random().toString(36).substring(2, 11),
+                  name: 'New Exercise',
+                  machineType: 'Machine',
+                  musclePath: 'Legs/Quads',
+                  primaryMuscles: ['quads'],
+                  secondaryMuscles: [],
+                  weightStep: 2.5,
+                  targetSets: 3,
+                  targetReps: 12,
+                  restSeconds: 60,
+                  videoLink: '',
+                })
+              }
+            >
+              <Plus className="h-5 w-5 text-primary" />
+              <span className="font-bold">Manual Add</span>
+            </Button>
+
+            <ExercisePresetPicker
+              onSelect={(preset) =>
+                appendExercise({
+                  id: Math.random().toString(36).substring(2, 11),
+                  ...preset,
+                  videoLink: preset.videoLink ?? '',
+                })
+              }
+              trigger={
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex h-20 flex-col gap-1 border-2 border-dashed border-primary/30 bg-primary/5 transition-colors hover:bg-primary/10"
+                >
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <span className="font-bold text-primary">Add from Preset</span>
+                </Button>
+              }
+            />
+          </div>
         </div>
 
         <div className="fixed right-0 bottom-20 left-0 z-50 border-t border-border/50 bg-background/80 p-4 backdrop-blur-md md:bottom-0">
@@ -218,7 +243,7 @@ function ExerciseItem({
             control={control}
             name={`exercises.${index}.name`}
             render={({ field }) => (
-              <FormItem>
+              <FormItem className="flex items-center gap-2 space-y-0">
                 <FormControl>
                   <Input
                     className="h-8 max-w-[200px] border-none bg-transparent px-2 font-black focus-visible:ring-0"
@@ -226,6 +251,21 @@ function ExerciseItem({
                     {...field}
                   />
                 </FormControl>
+                <ExercisePresetPicker
+                  // I'll need to refactor ExerciseItem to take 'form' instead of 'control' or just use the setValue from useFormContext
+                  useFormContextHook={true}
+                  index={index}
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-primary hover:bg-primary/10"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </Button>
+                  }
+                />
               </FormItem>
             )}
           />
@@ -304,7 +344,12 @@ function ExerciseItem({
                   Weight Step (kg)
                 </FormLabel>
                 <FormControl>
-                  <Input type="number" step="0.5" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
+                  <Input
+                    type="number"
+                    step="0.5"
+                    {...field}
+                    onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                  />
                 </FormControl>
               </FormItem>
             )}
@@ -412,9 +457,7 @@ function MusclePicker({
 
         return (
           <FormItem className="flex flex-col gap-2">
-            <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">
-              {label}
-            </FormLabel>
+            <FormLabel className="text-[10px] font-black text-muted-foreground uppercase opacity-60">{label}</FormLabel>
             <FormControl>
               <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-3">
                 {MUSCLE_GROUPS.map((group) => (
@@ -454,5 +497,111 @@ function MusclePicker({
         );
       }}
     />
+  );
+}
+
+function ExercisePresetPicker({
+  onSelect,
+  trigger,
+  useFormContextHook = false,
+  index,
+}: {
+  onSelect?: (preset: ExercisePreset) => void;
+  trigger?: React.ReactNode;
+  useFormContextHook?: boolean;
+  index?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const { setValue } = useFormContext() || {};
+
+  const filteredPresets = EXERCISE_PRESETS.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleSelect = (preset: ExercisePreset) => {
+    if (useFormContextHook && index !== undefined && setValue) {
+      setValue(`exercises.${index}.name`, preset.name);
+      setValue(`exercises.${index}.machineType`, preset.machineType);
+      setValue(`exercises.${index}.musclePath`, preset.musclePath);
+      setValue(`exercises.${index}.primaryMuscles`, preset.primaryMuscles);
+      setValue(`exercises.${index}.secondaryMuscles`, preset.secondaryMuscles);
+      setValue(`exercises.${index}.weightStep`, preset.weightStep);
+      setValue(`exercises.${index}.targetSets`, preset.targetSets);
+      setValue(`exercises.${index}.targetReps`, preset.targetReps);
+      setValue(`exercises.${index}.restSeconds`, preset.restSeconds);
+      setValue(`exercises.${index}.videoLink`, preset.videoLink ?? '');
+    } else if (onSelect) {
+      onSelect(preset);
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger || <Button variant="outline">Presets</Button>}</DialogTrigger>
+      <DialogContent className="flex h-[80vh] max-w-2xl flex-col gap-0 overflow-hidden border-2 border-primary/20 bg-background/95 p-0 backdrop-blur-xl">
+        <DialogHeader className="border-b border-border/50 p-6 pb-4">
+          <DialogTitle className="flex items-center gap-2 text-2xl font-black tracking-tight uppercase italic">
+            <Dumbbell className="h-6 w-6 text-primary" />
+            Exercise Presets
+          </DialogTitle>
+          <div className="relative mt-4">
+            <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search exercises..."
+              className="h-12 pl-10 text-lg font-bold"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {filteredPresets.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+              <Dumbbell className="mb-4 h-12 w-12" />
+              <p className="text-xs font-black tracking-widest uppercase">No exercises found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 p-2">
+              {filteredPresets.map((preset) => (
+                <button
+                  key={preset.name}
+                  onClick={() => handleSelect(preset)}
+                  className="group flex items-center justify-between rounded-2xl border-2 border-transparent bg-muted/30 p-4 transition-all hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]"
+                >
+                  <div className="flex items-center gap-4 text-left">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-background shadow-sm transition-transform group-hover:scale-110">
+                      <Dumbbell className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg leading-tight font-black">{preset.name}</h3>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="text-[10px] font-black text-primary/70 uppercase">{preset.machineType}</span>
+                        <span className="text-[10px] font-black text-muted-foreground/70 uppercase">
+                          {preset.musclePath}
+                        </span>
+                        {preset.videoLink && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-red-500/70 uppercase">
+                            <Video className="h-3 w-3" /> Video
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border/50 bg-muted/20 p-4 text-center">
+          <p className="text-[10px] font-black tracking-widest uppercase opacity-40">
+            Powered by Workout Vantage Presets
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

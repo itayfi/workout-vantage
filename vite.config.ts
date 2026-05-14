@@ -16,7 +16,24 @@ export default defineConfig({
         name: 'Workout Vantage',
         short_name: 'WorkoutVantage',
         theme_color: '#ffffff',
-        icons: [], // You can add icons later
+        icons: [
+          {
+            src: '/workout-vantage/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/workout-vantage/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: '/workout-vantage/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+        ],
       },
     }),
   ],

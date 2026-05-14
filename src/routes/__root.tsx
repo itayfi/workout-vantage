@@ -22,10 +22,8 @@ function RootLayout() {
       {/* Navigation Bar */}
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2 font-heading text-xl font-bold tracking-tight text-primary">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-              <Play className="h-5 w-5 fill-current" />
-            </div>
+          <Link to="/" className="flex items-center gap-3 font-heading text-xl font-bold tracking-tight text-primary">
+            <img src="/workout-vantage/favicon.svg" alt="Workout Vantage Logo" className="h-9 w-9 drop-shadow-sm" />
             <span>Workout Vantage</span>
           </Link>
 
